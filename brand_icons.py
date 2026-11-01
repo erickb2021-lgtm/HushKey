@@ -8,7 +8,9 @@ like "move here, draw a curve to there"). This file turns that path into a
 see-through PNG with Pillow, so it blends into HushKey's dark background.
 """
 
+import base64
 import gzip
+import io
 import json
 import math
 import os
@@ -23,12 +25,80 @@ _icons = None        # list of [slug, title, hex, path, aliases]
 _by_slug = None
 _cache = {}
 
-POPULAR = ["riotgames", "leagueoflegends", "valorant", "discord", "steam", "epicgames",
-           "playstation", "roblox", "fortnite", "battledotnet", "twitch", "google", "gmail",
-           "apple", "instagram", "tiktok", "snapchat", "x", "facebook", "youtube", "netflix",
-           "spotify", "paypal", "github", "reddit", "whatsapp"]
-
 BACKGROUND = (22, 26, 34)  # HushKey card color, used to keep logos readable
+CUSTOM_PREFIX = "img:"     # a login's own picture is saved as "img:<base64 PNG>"
+
+# Everyday icons drawn for HushKey (24x24 SVG paths, "evenodd" fill so the
+# inner shapes cut holes). They cover anything without a brand logo; e.g.
+# typing "xbox" or "minecraft" offers the game controller.
+EVERYDAY = [
+    ["hk-controller", "Game controller", "3DDC97",
+     "M7 6h10c3 0 5 3 5.6 7l.4 3c.3 2-1.9 3.4-3.6 2.2L16 16H8l-3.4 2.2C2.9 19.4.7 18 1 16l.4-3C2 9 4 6 7 6Z"
+     "M6 9h2v2h2v2H8v2H6v-2H4v-2h2ZM15 11a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0Z"
+     "M17.5 13.5a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0Z",
+     ["game", "gaming", "games", "console", "xbox", "nintendo", "switch", "minecraft", "blizzard",
+      "call of duty", "warzone", "overwatch", "apex", "genshin", "hoyoverse", "rocket league",
+      "world of warcraft", "hearthstone", "diablo", "bethesda"]],
+    ["hk-bank", "Bank", "F2C14E", "M12 2 2 7v2h20V7ZM4 10h3v8H4ZM10.5 10h3v8h-3ZM17 10h3v8h-3ZM2 19h20v3H2Z",
+     ["bank", "banking", "credit union", "savings", "checking", "capital one", "finance"]],
+    ["hk-email", "Email", "6CB6FF", "M2 5h20v14H2ZM4 7v.5l8 5.5 8-5.5V7l-8 5.5Z",
+     ["email", "mail", "inbox", "outlook", "yahoo", "hotmail", "aol"]],
+    ["hk-shopping", "Shopping", "FF9F5A", "M5 7h14l-1 15H6ZM9 7V6a3 3 0 0 1 6 0v1h-2V6a1 1 0 0 0-2 0v1Z",
+     ["shopping", "shop", "store", "amazon", "walmart", "costco", "best buy", "nike", "shein"]],
+    ["hk-chat", "Chat", "B18CFF",
+     "M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z",
+     ["chat", "messages", "messaging", "texting", "slack", "teams", "skype"]],
+    ["hk-music", "Music", "FF6FA8", "M9 3h11v12.5a3 3 0 1 1-2-2.8V7h-7v10.5a3 3 0 1 1-2-2.8Z",
+     ["music", "songs", "audio", "soundcloud", "pandora", "apple music"]],
+    ["hk-video", "Video", "FF6B6B",
+     "M3 4h18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM10 8.5v7l6-3.5Z",
+     ["video", "movies", "tv", "streaming", "hulu", "disney", "prime video", "peacock", "paramount"]],
+    ["hk-cloud", "Cloud", "8FD3FF",
+     "M7 19a5 5 0 0 1-.6-10A7 7 0 0 1 19.6 9.5 4.8 4.8 0 0 1 18 19Z",
+     ["cloud", "storage", "backup", "onedrive", "box"]],
+    ["hk-work", "Work", "C9A27E",
+     "M9 3h6a2 2 0 0 1 2 2v1h4a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4V5a2 2 0 0 1 2-2ZM9 5v1h6V5Z",
+     ["work", "job", "office", "business", "linkedin", "microsoft", "company"]],
+    ["hk-school", "School", "7CC4FF",
+     "M12 3 1 9l11 6 9-4.9V16h2V9ZM5 13v4c0 1.7 3.1 3 7 3s7-1.3 7-3v-4l-7 3.8Z",
+     ["school", "college", "university", "student", "class", "canvas", "blackboard", "education"]],
+    ["hk-money", "Money", "3DDC97",
+     "M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20Z"
+     "M11 6h2v1.1c1.7.3 3 1.4 3 2.9h-2c0-.6-.9-1-2-1s-2 .4-2 1 .9 1 2 1c2.2 0 4 1.1 4 3 0 1.5-1.3 2.6-3 2.9V18h-2v-1.1"
+     "c-1.7-.3-3-1.4-3-2.9h2c0 .6.9 1 2 1s2-.4 2-1-.9-1-2-1c-2.2 0-4-1.1-4-3 0-1.5 1.3-2.6 3-2.9Z",
+     ["money", "cash", "crypto", "wallet", "payment", "investing", "stocks"]],
+    ["hk-heart", "Heart", "FF6F91", "M12 21 3.5 12.6A5 5 0 0 1 12 6a5 5 0 0 1 8.5 6.6Z",
+     ["heart", "love", "dating", "favorite", "health"]],
+    ["hk-star", "Star", "F2C14E", "M12 2l3 6.5 7 .8-5.2 4.8 1.4 7L12 17.6 5.8 21.1l1.4-7L2 9.3l7-.8Z",
+     ["star", "favorite", "important"]],
+    ["hk-key", "Key", "F2C14E",
+     "M8 3a5 5 0 1 0 4.6 7H15v2h2v-2h2v3h2V8h-8.4A5 5 0 0 0 8 3ZM8 6a2 2 0 1 1 0 4a2 2 0 0 1 0-4Z",
+     ["key", "password", "wifi", "router", "door"]],
+    ["hk-lock", "Lock", "3DDC97",
+     "M6 10V7a6 6 0 0 1 12 0v3h1a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V11a1 1 0 0 1 1-1ZM8 10h8V7a4 4 0 0 0-8 0Z",
+     ["lock", "secure", "security", "vpn", "private"]],
+    ["hk-home", "Home", "8FD3FF", "M12 3 2 11h3v10h5v-6h4v6h5V11h3Z",
+     ["home", "house", "utilities", "electric", "internet", "rent", "apartment"]],
+    ["hk-phone", "Phone", "B18CFF",
+     "M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2ZM7 5v13h10V5Z",
+     ["phone", "mobile", "carrier", "verizon", "att", "t-mobile", "sim"]],
+]
+_EVERYDAY_SLUGS = {e[0] for e in EVERYDAY}
+
+# The 50 best-known apps, banks, streaming services and games, most popular
+# first. This is what the dropdown shows before you type, and these are
+# ranked first in search results. (Amazon, Microsoft/Xbox/Outlook, LinkedIn,
+# Disney+, Hulu, Minecraft and Nintendo don't allow their logos to be shared,
+# so they use an everyday icon or "Use my own picture" instead.)
+TOP_50 = ["google", "youtube", "gmail", "apple", "icloud", "instagram", "facebook", "whatsapp",
+          "tiktok", "snapchat", "x", "reddit", "discord", "twitch", "netflix", "spotify", "max",
+          "paypal", "venmo", "cashapp", "chase", "bankofamerica", "wellsfargo", "americanexpress",
+          "coinbase", "uber", "doordash", "airbnb", "ebay", "github", "zoom", "dropbox",
+          "pinterest", "telegram", "messenger", "steam", "epicgames", "playstation", "roblox",
+          "fortnite", "riotgames", "leagueoflegends", "valorant", "battledotnet", "ea", "ubisoft",
+          "activision", "rockstargames", "chessdotcom", "duolingo"]
+_TOP_RANK = {slug: i for i, slug in enumerate(TOP_50)}
+POPULAR = TOP_50
 
 
 def _resource(rel):
@@ -43,9 +113,47 @@ def load():
         if _icons is None:
             with gzip.open(_resource(os.path.join("assets", "brand_icons.json.gz")), "rt",
                            encoding="utf-8") as f:
-                _icons = json.load(f)["icons"]
-            _by_slug = {i[0]: i for i in _icons}
+                icons = json.load(f)["icons"]
+            icons = [list(e) for e in EVERYDAY] + icons
+            _by_slug = {i[0]: i for i in icons}
+            _icons = icons
     return _icons
+
+
+def sections():
+    """What the dropdown shows before you type anything."""
+    load()
+
+    def pick(slugs):
+        return [(s, _by_slug[s][1]) for s in slugs if s in _by_slug]
+    return [("Top 50 apps & games", pick(TOP_50)),
+            ("Everyday icons", pick([e[0] for e in EVERYDAY]))]
+
+
+# ---- a login's own picture ------------------------------------------------
+
+MAX_PICTURE_BYTES = 15 * 1024 * 1024
+
+
+def picture_to_icon(path: str) -> str:
+    """Turn any image file into a small square icon string to save with a login."""
+    if os.path.getsize(path) > MAX_PICTURE_BYTES:
+        raise ValueError("That picture is too big (max 15 MB).")
+    try:
+        with Image.open(path) as im:
+            im = im.convert("RGBA")
+    except Exception:
+        raise ValueError("That file isn't a picture HushKey can read. Try a PNG or JPG.")
+    side = min(im.size)
+    left, top = (im.width - side) // 2, (im.height - side) // 2
+    im = im.crop((left, top, left + side, top + side)).resize((96, 96), Image.LANCZOS)
+    buf = io.BytesIO()
+    im.save(buf, format="PNG", optimize=True)
+    return CUSTOM_PREFIX + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def is_picture(icon: str) -> bool:
+    return bool(icon) and icon.startswith(CUSTOM_PREFIX)
 
 
 def count() -> int:
@@ -53,6 +161,8 @@ def count() -> int:
 
 
 def title(slug):
+    if is_picture(slug):
+        return "Your picture"
     load()
     item = _by_slug.get(slug)
     return item[1] if item else None
@@ -89,9 +199,14 @@ def search(query: str, limit: int = 8):
                 continue
             best = min(best, s + penalty)
         if best < 9:
-            scored.append((best, len(name), name.lower(), slug, name))
+            # big, well-known names first, then HushKey's everyday icons, then the rest
+            if slug in _TOP_RANK:
+                best -= 0.75
+            elif slug in _EVERYDAY_SLUGS:
+                best -= 0.25
+            scored.append((best, _TOP_RANK.get(slug, 99), len(name), name.lower(), slug, name))
     scored.sort()
-    return [(s[3], s[4]) for s in scored[:limit]]
+    return [(s[4], s[5]) for s in scored[:limit]]
 
 
 def suggest(client_name: str):
@@ -298,8 +413,8 @@ def path_to_polygons(d: str):
     return [p for p in polys if len(p) >= 3]
 
 
-def _fill_nonzero(polys, size, scale):
-    """Fill shapes using the SVG 'nonzero' rule (holes work properly)."""
+def _fill_nonzero(polys, size, scale, evenodd=False):
+    """Fill shapes using the SVG 'nonzero' rule (or 'evenodd'), so holes work."""
     rows = [[] for _ in range(size)]
     for poly in polys:
         n = len(poly)
@@ -324,8 +439,8 @@ def _fill_nonzero(polys, size, scale):
         hits.sort()
         wind = 0
         for idx in range(len(hits) - 1):
-            wind += hits[idx][1]
-            if wind != 0:
+            wind += 1 if evenodd else hits[idx][1]
+            if (wind % 2 != 0) if evenodd else (wind != 0):
                 a = max(0, min(size, int(round(hits[idx][0]))))
                 b = max(0, min(size, int(round(hits[idx + 1][0]))))
                 if b > a:
@@ -333,33 +448,49 @@ def _fill_nonzero(polys, size, scale):
     return Image.frombytes("L", (size, size), bytes(buf))
 
 
-def _readable_color(hex_color):
-    """Brand color, unless it's too dark to see on HushKey's dark cards."""
+LIGHT_BACKGROUND = (255, 255, 255)  # HushKey card color in light mode
+
+
+def _readable_color(hex_color, light=False):
+    """Brand color, unless it would vanish on HushKey's cards: too dark in
+    dark mode (drawn light instead) or too pale in light mode (drawn dark)."""
     rgb = tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+    bg = LIGHT_BACKGROUND if light else BACKGROUND
 
     def lum(c):
         ch = [v / 255 for v in c]
         ch = [v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4 for v in ch]
         return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]
 
-    contrast = (max(lum(rgb), lum(BACKGROUND)) + 0.05) / (min(lum(rgb), lum(BACKGROUND)) + 0.05)
-    return rgb if contrast >= 2.4 else (238, 241, 246)
+    contrast = (max(lum(rgb), lum(bg)) + 0.05) / (min(lum(rgb), lum(bg)) + 0.05)
+    if contrast >= 2.4:
+        return rgb
+    return (27, 31, 36) if light else (238, 241, 246)
 
 
-def render(slug: str, size: int = 64):
-    """See-through PNG of a brand logo in its own color, or None if unknown."""
-    key = (slug, size)
+def render(slug: str, size: int = 64, light: bool = False):
+    """See-through PNG of a brand logo in its own color, or None if unknown.
+    light=True makes sure it shows up on light mode's white cards."""
+    key = (slug, size, light)
     if key in _cache:
         return _cache[key]
+    if is_picture(slug):
+        try:
+            img = Image.open(io.BytesIO(base64.b64decode(slug[len(CUSTOM_PREFIX):]))).convert("RGBA")
+        except Exception:
+            return None
+        img = img.resize((size, size), Image.LANCZOS)
+        _cache[key] = img
+        return img
     load()
     item = _by_slug.get(slug)
     if not item:
         return None
     ss = 4  # draw 4x bigger, then shrink, for smooth edges
     big = size * ss
-    mask = _fill_nonzero(path_to_polygons(item[3]), big, big / 24.0)
+    mask = _fill_nonzero(path_to_polygons(item[3]), big, big / 24.0, evenodd=slug in _EVERYDAY_SLUGS)
     mask = mask.resize((size, size), Image.BOX)
-    img = Image.new("RGBA", (size, size), _readable_color(item[2]) + (0,))
+    img = Image.new("RGBA", (size, size), _readable_color(item[2], light) + (0,))
     img.putalpha(mask)
     _cache[key] = img
     return img

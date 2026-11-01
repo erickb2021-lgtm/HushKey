@@ -396,6 +396,19 @@ class Vault:
 
     # ---- recovery ---------------------------------------------------------
 
+    def enable_recovery(self, recovery_secret: bytes) -> None:
+        """Turn on email recovery for a vault made without it (e.g. before
+        email was set up). The secret must already be saved online under
+        this vault's id."""
+        self._require_unlocked()
+        rsalt = secrets.token_bytes(16)
+        rkey = derive_recovery_key(recovery_secret, rsalt)
+        self._data["recovery"] = {
+            "salt": _b64e(rsalt),
+            "key_by_recovery": _fernet(rkey).encrypt(self._vault_key).decode("ascii"),
+        }
+        self._save()
+
     def start_recovery(self, recovery_secret: bytes) -> "RecoveryReset":
         """Use the secret downloaded after the email code to unlock the vault key
         IN MEMORY ONLY. Nothing on disk changes until RecoveryReset.complete()."""

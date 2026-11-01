@@ -37,26 +37,119 @@ IS_MAC = sys.platform == "darwin"
 IS_WIN = os.name == "nt"
 MONO = "Menlo" if IS_MAC else ("Consolas" if IS_WIN else "DejaVu Sans Mono")
 
-# ---- colors (green = safe, gold = key) ----
-BG = "#0E1116"
-SURFACE = "#161A22"
-RAISED = "#1D222C"
-BORDER = "#2A303C"
-TEXT = "#EEF1F6"
-MUTED = "#A2AAB8"
-SUBTLE = "#8C95A5"
-ACCENT = "#3DDC97"
-ACCENT_HOVER = "#5BE6AA"
-ACCENT_INK = "#08281A"
-ACCENT_SOFT = "#14231D"
-GOLD = "#F2C14E"
-DANGER = "#FF8080"
-DANGER_SOFT = "#2A1618"
+# ---- colors: (light mode, dark mode). Green = safe, gold = key. ----
+# CustomTkinter switches between the two automatically when the theme changes.
+BG = ("#F7F4EC", "#0E1116")            # off-white / near-black
+SURFACE = ("#FFFFFF", "#161A22")
+RAISED = ("#EFEADF", "#1D222C")
+BORDER = ("#DCD4C2", "#2A303C")
+TEXT = ("#1B1F24", "#EEF1F6")
+LABEL = ("#3A4250", "#C9CFDA")
+MUTED = ("#5B6472", "#A2AAB8")
+SUBTLE = ("#6B7280", "#8C95A5")
+ACCENT = ("#16925A", "#3DDC97")        # deeper green on light so it stays readable
+ACCENT_HOVER = ("#12784A", "#5BE6AA")
+ACCENT_INK = ("#FFFFFF", "#08281A")    # text on green buttons
+ACCENT_DISABLED_INK = ("#D5F0E2", "#2F5E48")
+ACCENT_SOFT = ("#E2F5EA", "#14231D")
+ACCENT_SOFT_HOVER = ("#D0EEDD", "#1A3328")
+GOLD = ("#B07D12", "#F2C14E")          # deeper gold on light
+GOLD_HOVER = ("#946A0F", "#F7D27E")
+GOLD_SOFT = ("#FBF1D6", "#2A2414")
+GOLD_INK = ("#FFFFFF", "#2A2414")
+DANGER = ("#C62828", "#FF8080")
+DANGER_SOFT = ("#FDECEC", "#2A1618")
+DANGER_BORDER = ("#EBB4B4", "#5A2A2E")
+SIGNOUT = ("#D64545", "#E5484D")       # the red Sign out button
+SIGNOUT_HOVER = ("#B83333", "#C93A3F")
 DOTS = "•" * 10
+
+# ---- fonts: Poppins (bundled, free OFL license) ----
+FAMILY = None
+
+
+def resource(rel):
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, rel)
+
+
+def _register_font_file(path):
+    """Make a bundled font usable by this app only (nothing is installed)."""
+    if IS_WIN:
+        return ctk.FontManager.windows_load_font(path, private=True, enumerable=True)
+    if IS_MAC:
+        import ctypes
+        import ctypes.util
+        cf = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreFoundation"))
+        ct = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreText"))
+        cf.CFURLCreateFromFileSystemRepresentation.restype = ctypes.c_void_p
+        cf.CFURLCreateFromFileSystemRepresentation.argtypes = [ctypes.c_void_p, ctypes.c_char_p,
+                                                               ctypes.c_long, ctypes.c_bool]
+        ct.CTFontManagerRegisterFontsForURL.restype = ctypes.c_bool
+        ct.CTFontManagerRegisterFontsForURL.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p]
+        raw = path.encode("utf-8")
+        url = cf.CFURLCreateFromFileSystemRepresentation(None, raw, len(raw), False)
+        return bool(ct.CTFontManagerRegisterFontsForURL(url, 1, None))  # 1 = this app only
+    return ctk.FontManager.load_font(path)
+
+
+def load_fonts(root):
+    """Pick the app font once the window exists: Poppins if it loaded,
+    otherwise a good built-in font (Avenir Next on Mac, Segoe UI on Windows)."""
+    global FAMILY
+    try:
+        import tkinter.font as tkfont
+    except ImportError:
+        return
+    for name in ("Poppins-Regular.ttf", "Poppins-Bold.ttf"):
+        try:
+            _register_font_file(resource(os.path.join("assets", "fonts", name)))
+        except Exception:
+            traceback.print_exc()
+    try:
+        families = set(tkfont.families(root))
+    except Exception:
+        families = set()
+    for candidate in ("Poppins", "Avenir Next" if IS_MAC else "Segoe UI", "Helvetica"):
+        if candidate in families:
+            FAMILY = candidate
+            break
 
 
 def font(size=14, weight="normal", mono=False):
-    return ctk.CTkFont(family=MONO, size=size, weight=weight) if mono else ctk.CTkFont(size=size, weight=weight)
+    if mono:
+        return ctk.CTkFont(family=MONO, size=size, weight=weight)
+    if FAMILY:
+        return ctk.CTkFont(family=FAMILY, size=size, weight=weight)
+    return ctk.CTkFont(size=size, weight=weight)
+
+
+# ---- settings (theme, last version seen); nothing secret goes here ----
+
+def _settings_path(data_dir=None):
+    from vault import default_data_dir
+    return os.path.join(data_dir or default_data_dir(), "settings.json")
+
+
+def load_settings(data_dir=None) -> dict:
+    import json
+    try:
+        with open(_settings_path(data_dir), encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(settings: dict, data_dir=None) -> None:
+    import json
+    path = _settings_path(data_dir)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=2)
+    except OSError:
+        traceback.print_exc()
 
 
 # ==========================================================================
@@ -67,11 +160,13 @@ _logo_cache = {}
 
 
 def logo_image(size, tile=False):
-    """The HushKey logo, drawn in code (see brand.py) so it can't go missing."""
+    """The HushKey logo, drawn in code (see brand.py) so it can't go missing.
+    Light mode gets deeper green/gold so it stands out on off-white."""
     key = (size, tile)
     if key not in _logo_cache:
-        img = draw_logo(size * 2, tile=tile)  # 2x for sharp edges on high-res screens
-        _logo_cache[key] = ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
+        dark = draw_logo(size * 2, tile=tile)  # 2x for sharp edges on high-res screens
+        light = draw_logo(size * 2, tile=tile, light=True)
+        _logo_cache[key] = ctk.CTkImage(light_image=light, dark_image=dark, size=(size, size))
     return _logo_cache[key]
 
 
@@ -104,8 +199,70 @@ def set_window_icon(win):
 
 
 def brand_image(slug, size):
-    img = brand_icons.render(slug, size * 2) if slug else None
-    return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size)) if img else None
+    """An app logo for both themes (dark logos turn light in dark mode and
+    light logos turn dark in light mode, so they never disappear)."""
+    if not slug:
+        return None
+    dark = brand_icons.render(slug, size * 2)
+    if dark is None:
+        return None
+    light = brand_icons.render(slug, size * 2, light=True)
+    return ctk.CTkImage(light_image=light, dark_image=dark, size=(size, size))
+
+
+# ---- the theme switch: a key that slides between night and day ----
+
+_switch_cache = {}
+
+
+def key_switch_image():
+    """One image for the theme switch; CustomTkinter shows the day picture in
+    light mode and the night picture in dark mode by itself."""
+    if "img" not in _switch_cache:
+        _switch_cache["img"] = ctk.CTkImage(light_image=_draw_switch(False),
+                                            dark_image=_draw_switch(True), size=(76, 38))
+    return _switch_cache["img"]
+
+
+def _draw_switch(dark: bool):
+    """A pill-shaped switch whose knob is a green circle with a key in it.
+    Night: key slid right, moon and stars on a dark track.
+    Day:   key slid left, sun on an off-white track."""
+    from PIL import Image, ImageDraw
+    s = 4
+    w, h = 76 * s, 38 * s
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    track = (29, 34, 44, 255) if dark else (237, 231, 214, 255)
+    edge = (42, 48, 60, 255) if dark else (210, 199, 174, 255)
+    gold = (242, 193, 78, 255) if dark else (176, 125, 18, 255)
+    d.rounded_rectangle([0, 0, w - 1, h - 1], radius=h // 2, fill=track, outline=edge, width=2 * s)
+    if dark:  # moon + stars on the left
+        cx, cy = 20 * s, 19 * s
+        d.ellipse([cx - 8 * s, cy - 8 * s, cx + 8 * s, cy + 8 * s], fill=gold)
+        d.ellipse([cx - 4 * s, cy - 11 * s, cx + 10 * s, cy + 3 * s], fill=track)
+        for sx, sy in ((31, 11), (35, 24)):
+            d.ellipse([(sx - 1.3) * s, (sy - 1.3) * s, (sx + 1.3) * s, (sy + 1.3) * s], fill=gold)
+        kx = w - h // 2
+    else:     # sun on the right
+        cx, cy = 56 * s, 19 * s
+        d.ellipse([cx - 5 * s, cy - 5 * s, cx + 5 * s, cy + 5 * s], fill=gold)
+        import math
+        for k in range(8):
+            a = k * math.pi / 4
+            d.line([cx + 7.5 * s * math.cos(a), cy + 7.5 * s * math.sin(a),
+                    cx + 10 * s * math.cos(a), cy + 10 * s * math.sin(a)], fill=gold, width=2 * s)
+        kx = h // 2
+    # knob with a key inside
+    r = 15 * s
+    knob = (61, 220, 151, 255) if dark else (22, 146, 90, 255)
+    d.ellipse([kx - r, h // 2 - r, kx + r, h // 2 + r], fill=knob)
+    key = brand_icons.render("hk-key", 22 * s)
+    if key is not None:
+        ink = Image.new("RGBA", key.size, (8, 40, 26, 255) if dark else (255, 255, 255, 255))
+        ink.putalpha(key.getchannel("A"))
+        img.alpha_composite(ink, (int(kx - key.width / 2), int(h / 2 - key.height / 2)))
+    return img.resize((76 * 2, 38 * 2), Image.LANCZOS)
 
 
 # ==========================================================================
@@ -116,7 +273,7 @@ def primary_button(parent, text, command, **kw):
     kw.setdefault("height", 46)
     return ctk.CTkButton(parent, text=text, command=command, corner_radius=10,
                          fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=ACCENT_INK,
-                         text_color_disabled="#2F5E48", font=font(15, "bold"), **kw)
+                         text_color_disabled=ACCENT_DISABLED_INK, font=font(15, "bold"), **kw)
 
 
 def ghost_button(parent, text, command, **kw):
@@ -146,13 +303,13 @@ def entry(parent, placeholder="", show=None, mono=False, **kw):
 
 
 def field_label(parent, text):
-    return ctk.CTkLabel(parent, text=text, font=font(13, "bold"), text_color="#C9CFDA", anchor="w")
+    return ctk.CTkLabel(parent, text=text, font=font(13, "bold"), text_color=LABEL, anchor="w")
 
 
 def checkbox(parent, text, checked=True):
     var = ctk.BooleanVar(value=checked)
     box = ctk.CTkCheckBox(parent, text=text, variable=var, onvalue=True, offvalue=False,
-                          font=font(13), text_color="#C9CFDA", fg_color=ACCENT, hover_color=ACCENT_HOVER,
+                          font=font(13), text_color=LABEL, fg_color=ACCENT, hover_color=ACCENT_HOVER,
                           border_color=BORDER, checkmark_color=ACCENT_INK, corner_radius=6)
     return box, var
 
@@ -216,16 +373,23 @@ class StrengthBar(ctk.CTkFrame):
 
 
 class LogoPicker(ctk.CTkFrame):
-    """'Choose a logo for this login': type to search, or click the arrow
-    to browse popular apps. Logos have see-through backgrounds."""
+    """'Choose a logo for this login'. Type to search, or click the arrow to
+    browse the Top 50 apps & games and HushKey's everyday icons.
 
-    MAX_RESULTS = 6
+    The list FLOATS on top of the form, like a dropdown on a website, so the
+    pop-up window never has to grow (CustomTkinter pop-ups can't always grow,
+    which is why an earlier version showed nothing)."""
+
+    MAX_RESULTS = 12
+    LIST_HEIGHT = 270
 
     def __init__(self, parent, slug=""):
         super().__init__(parent, fg_color="transparent")
         self.slug = slug or ""
         self.picked_by_hand = bool(slug)
         self.open = False
+        self.results = None
+        self._shown_query = None
 
         field_label(self, "Choose a logo for this login (optional)").pack(fill="x")
         row = ctk.CTkFrame(self, fg_color="transparent")
@@ -234,61 +398,140 @@ class LogoPicker(ctk.CTkFrame):
         self.preview = ctk.CTkLabel(row, text="", width=46, height=46, corner_radius=10, fg_color=RAISED,
                                     text_color=SUBTLE, font=font(18, "bold"))
         self.preview.pack(side="left")
-        self.search = ctk.CTkEntry(row, placeholder_text="Type an app, e.g. riot", width=FIELD_WIDTH - 46 - 56 - 16,
-                                   height=46, corner_radius=10, fg_color=BG, border_color=BORDER,
-                                   text_color=TEXT, placeholder_text_color=SUBTLE, font=font(14))
+        self.search = ctk.CTkEntry(row, placeholder_text="Search logos, e.g. riot",
+                                   width=FIELD_WIDTH - 46 - 56 - 16, height=46, corner_radius=10,
+                                   fg_color=BG, border_color=BORDER, text_color=TEXT,
+                                   placeholder_text_color=SUBTLE, font=font(14))
         self.search.pack(side="left", fill="x", expand=True, padx=8)
         self.arrow = ctk.CTkButton(row, text="▾", width=46, height=46, corner_radius=10, fg_color=RAISED,
                                    hover_color=BORDER, text_color=TEXT, font=font(18), command=self.toggle)
         self.arrow.pack(side="left")
         self.search.bind("<KeyRelease>", self._typed, add="+")
-        self.search.bind("<FocusIn>", lambda _e: self.show_results(), add="+")
+        self.search.bind("<Return>", self._pick_top, add="+")
+        self.preview.bind("<Button-1>", lambda _e: self.toggle())
 
-        self.results = ctk.CTkScrollableFrame(self, height=6 * 40, fg_color=SURFACE, corner_radius=10,
-                                              border_width=1, border_color=BORDER)
-        self.note = ctk.CTkLabel(self, text="", font=font(12), text_color=SUBTLE, anchor="w")
-        self.note.pack(fill="x")
+        under = ctk.CTkFrame(self, fg_color="transparent")
+        under.pack(fill="x", pady=(2, 0))
+        self.note = ctk.CTkLabel(under, text="", font=font(12), text_color=SUBTLE, anchor="w",
+                                 justify="left", wraplength=300)
+        self.note.pack(side="left", fill="x", expand=True)
+        link_button(under, "Use my own picture…", self.pick_picture, size=12).pack(side="right")
+
+        # close the list when clicking anywhere else in the window
+        self.after(50, lambda: self.winfo_toplevel().bind("<Button-1>", self._click_anywhere, add="+"))
         self._refresh_preview()
         if self.slug:
             self.search.insert(0, brand_icons.title(self.slug) or "")
 
+    # ---- preview -------------------------------------------------------------
+
     def _refresh_preview(self):
         img = brand_image(self.slug, 30)
-        self.preview.configure(image=img if img else None, text="" if img else "?")
-        if not img:
-            self.preview.configure(image="")
+        if img:
+            self.preview.configure(image=img, text="")
+        else:
+            self.preview.configure(image=None, text="?")
+            try:  # CustomTkinter keeps the old picture unless it's cleared directly
+                self.preview._label.configure(image="")
+            except Exception:
+                pass
+
+    # ---- the floating list ---------------------------------------------------
+
+    def _ensure_list(self):
+        if self.results is None or not self.results.winfo_exists():
+            # a child of the pop-up window itself, so it can float over the form
+            self.results = ctk.CTkScrollableFrame(self.winfo_toplevel(), height=self.LIST_HEIGHT,
+                                                  fg_color=RAISED, corner_radius=12, border_width=1,
+                                                  border_color=ACCENT)
+            self._shown_query = None
+
+    def _query(self):
+        q = self.search.get().strip()
+        # showing the chosen logo's name? then browse everything again
+        if self.slug and q == (brand_icons.title(self.slug) or ""):
+            return ""
+        return q
+
+    def _option(self, slug, name):
+        ctk.CTkButton(self.results, text="  " + name, image=brand_image(slug, 24), compound="left",
+                      anchor="w", height=38, corner_radius=8,
+                      fg_color=ACCENT_SOFT if slug == self.slug else "transparent",
+                      hover_color=BORDER, text_color=TEXT, font=font(14),
+                      command=lambda s=slug: self.choose(s)).pack(fill="x", padx=4, pady=1)
+
+    def _heading(self, text):
+        ctk.CTkLabel(self.results, text=text.upper(), font=font(11, "bold"), text_color=ACCENT,
+                     anchor="w").pack(fill="x", padx=10, pady=(10, 2))
+
+    def _fill(self, query):
+        for w in self.results.winfo_children():
+            w.destroy()
+        ctk.CTkButton(self.results, text="  No logo (show the first letter)", anchor="w", height=34,
+                      corner_radius=8, fg_color="transparent", hover_color=BORDER, text_color=MUTED,
+                      font=font(13), command=lambda: self.choose("")).pack(fill="x", padx=4, pady=(4, 1))
+        if query:
+            hits = brand_icons.search(query, self.MAX_RESULTS)
+            for slug, name in hits:
+                self._option(slug, name)
+            if not hits:
+                ctk.CTkLabel(self.results, text="No logo found. Try another name, or\n"
+                                                "click “Use my own picture…” below.",
+                             font=font(13), text_color=SUBTLE, justify="left").pack(padx=10, pady=8, anchor="w")
+        else:
+            for title, items in brand_icons.sections():
+                self._heading(title)
+                for slug, name in items:
+                    self._option(slug, name)
+        self._shown_query = query
+
+    def show_results(self):
+        try:
+            self._ensure_list()
+            query = self._query()
+            if query != self._shown_query:
+                self._fill(query)
+            if not self.open:
+                self.results.place(in_=self.row, relx=0, rely=1.0, y=6, relwidth=1.0, anchor="nw")
+                self.open = True
+                self.arrow.configure(text="▴")
+            self.results._parent_frame.lift()
+        except Exception as exc:
+            traceback.print_exc()
+            self.note.configure(text=f"Couldn't show logos: {exc}", text_color=DANGER)
+
+    def hide_results(self):
+        if self.open and self.results is not None and self.results.winfo_exists():
+            self.results.place_forget()
+        self.open = False
+        if self.arrow.winfo_exists():
+            self.arrow.configure(text="▾")
 
     def toggle(self):
         self.hide_results() if self.open else self.show_results()
 
-    def _typed(self, _e=None):
+    def _typed(self, event=None):
+        if event is not None and getattr(event, "keysym", "") in ("Return", "Escape", "Tab"):
+            if event.keysym == "Escape":
+                self.hide_results()
+            return
         self.show_results()
 
-    def show_results(self):
-        for w in self.results.winfo_children():
-            w.destroy()
-        hits = brand_icons.search(self.search.get(), self.MAX_RESULTS)
-        ctk.CTkButton(self.results, text="   No logo (use first letter)", anchor="w", height=36,
-                      fg_color="transparent", hover_color=RAISED, text_color=MUTED, font=font(13),
-                      command=lambda: self.choose("")).pack(fill="x")
-        for slug, name in hits:
-            ctk.CTkButton(self.results, text="  " + name, image=brand_image(slug, 22), compound="left",
-                          anchor="w", height=36, fg_color="transparent", hover_color=RAISED,
-                          text_color=TEXT, font=font(14),
-                          command=lambda s=slug: self.choose(s)).pack(fill="x")
-        if not hits:
-            ctk.CTkLabel(self.results, text="No logo found. Try another name.", font=font(13),
-                         text_color=SUBTLE).pack(pady=6)
-        if not self.open:
-            self.results.pack(fill="x", pady=(6, 0), after=self.row)
-            self.open = True
-            self.arrow.configure(text="▴")
+    def _pick_top(self, _e=None):
+        query = self._query()
+        hits = brand_icons.search(query, 1) if query else []
+        if hits:
+            self.choose(hits[0][0])
 
-    def hide_results(self):
-        if self.open:
-            self.results.pack_forget()
-            self.open = False
-            self.arrow.configure(text="▾")
+    def _click_anywhere(self, event):
+        if not self.open or self.results is None:
+            return
+        clicked = str(event.widget)
+        if clicked.startswith(str(self.results._parent_frame)) or clicked.startswith(str(self.row)):
+            return
+        self.hide_results()
+
+    # ---- choosing --------------------------------------------------------------
 
     def choose(self, slug, by_hand=True):
         self.slug = slug or ""
@@ -297,8 +540,27 @@ class LogoPicker(ctk.CTkFrame):
         if slug:
             self.search.insert(0, brand_icons.title(slug) or "")
         self._refresh_preview()
-        self.note.configure(text="" if by_hand or not slug else "Suggested from the client name. Change it any time.")
+        self.note.configure(text="" if by_hand or not slug else "Suggested from the client name. Change it any time.",
+                            text_color=SUBTLE)
+        self._shown_query = None
         self.hide_results()
+
+    def pick_picture(self):
+        """Any picture from the computer (e.g. a logo you saved). It's shrunk
+        to a small square and saved encrypted with the login."""
+        from tkinter import filedialog
+        self.hide_results()
+        path = filedialog.askopenfilename(
+            parent=self.winfo_toplevel(), title="Choose a picture for this login",
+            filetypes=[("Pictures", "*.png *.jpg *.jpeg *.gif *.webp *.bmp *.ico"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            icon = brand_icons.picture_to_icon(path)
+        except (ValueError, OSError) as exc:
+            self.note.configure(text=str(exc), text_color=DANGER)
+            return
+        self.choose(icon)
 
     def suggest_from(self, client_name):
         """Auto-pick a logo from the client name, unless the user chose one."""
@@ -315,14 +577,16 @@ class LogoPicker(ctk.CTkFrame):
 
 class HushKeyApp(ctk.CTk):
     def __init__(self, data_dir: str | None = None, cloud: Cloud | None = None):
-        ctk.set_appearance_mode("dark")
+        self.data_dir = data_dir
+        self.settings = load_settings(data_dir)
+        ctk.set_appearance_mode("light" if self.settings.get("theme") == "light" else "dark")
         super().__init__(fg_color=BG)
+        load_fonts(self)
         self.title(APP_NAME)
         self.geometry("1000x700")
         self.minsize(880, 640)
         set_window_icon(self)
 
-        self.data_dir = data_dir
         self.cloud = cloud or Cloud()
         self.vault: Vault | None = None
         self.last_email = ""
@@ -347,7 +611,31 @@ class HushKeyApp(ctk.CTk):
         self.after(1000, self._tick)
         # load the logo list in the background so the first search is instant
         threading.Thread(target=brand_icons.load, daemon=True).start()
-        self.show_signin()
+
+        # first time opening a new version? say so on the sign-in screen
+        seen = self.settings.get("last_version")
+        notice = f"HushKey was updated to v{__version__}." if seen and seen != __version__ else ""
+        if seen != __version__:
+            self.settings["last_version"] = __version__
+            save_settings(self.settings, self.data_dir)
+        self.show_signin(notice, ok=True)
+
+    # ------------------------------------------------------------ theme
+
+    @property
+    def is_dark(self):
+        return ctk.get_appearance_mode().lower() == "dark"
+
+    def toggle_theme(self):
+        new = "light" if self.is_dark else "dark"
+        ctk.set_appearance_mode(new)
+        self.settings["theme"] = new
+        save_settings(self.settings, self.data_dir)
+
+    def theme_switch(self, parent):
+        """The key switch: slide the key to turn the lights on or off."""
+        return ctk.CTkButton(parent, text="", image=key_switch_image(), width=76, height=38,
+                             fg_color="transparent", hover=False, command=self.toggle_theme)
 
     # ---------------------------------------------------------------- helpers
 
@@ -362,6 +650,7 @@ class HushKeyApp(ctk.CTk):
         card = ctk.CTkFrame(self.body, width=width, fg_color=SURFACE, corner_radius=18,
                             border_width=1, border_color=BORDER)
         card.place(relx=0.5, rely=0.5, anchor="center")
+        self.theme_switch(self.body).place(relx=1.0, x=-24, y=20, anchor="ne")
         inner = ctk.CTkFrame(card, fg_color="transparent", width=width - 64)
         inner.pack(padx=32, pady=30, fill="both")
         return inner
@@ -557,9 +846,35 @@ class HushKeyApp(ctk.CTk):
                     lambda _: self.show_code(
                         addr, "Enter your sign-in code",
                         "This computer isn't remembered yet, so we emailed you a 6-digit code.",
-                        on_verified=lambda s: (lambda: None), on_done=done, on_cancel=cancel,
-                        remember=True),
+                        # a correct code also switches on email recovery for older vaults
+                        on_verified=lambda s: (lambda: self._ensure_recovery(v, s)),
+                        on_done=done, on_cancel=cancel, remember=True),
                     failed, button, "Sending code…")
+
+    def _ensure_recovery(self, v: Vault, session):
+        """Give a vault made before email was set up its recovery key.
+        Runs in the background, right after the user proved their email."""
+        if self.cloud.configured and v.is_unlocked and not v.has_recovery:
+            secret = new_recovery_secret()
+            self.cloud.store_secret(session, v.vault_id, secret)  # online first...
+            v.enable_recovery(secret)                             # ...then the vault
+
+    def turn_on_recovery(self):
+        v, addr = self.vault, self.vault.email
+
+        def done(_):
+            self.show_main()
+            self.status.configure(text="Email recovery is on. You can now reset your master "
+                                       "password with a code sent to your email.", text_color=ACCENT)
+
+        self.run_bg(lambda: self.cloud.send_code(addr),
+                    lambda _: self.show_code(
+                        addr, "Turn on email recovery",
+                        "We emailed you a 6-digit code to confirm it's your email.",
+                        on_verified=lambda s: (lambda: self._ensure_recovery(v, s)),
+                        on_done=done, on_cancel=self.show_main, done_text="Turning on…"),
+                    lambda exc: self.status.configure(text=self._err_text(exc), text_color=DANGER),
+                    self.recovery_btn, "Sending code…")
 
     # ========================================================= CREATE VAULT
 
@@ -722,7 +1037,9 @@ class HushKeyApp(ctk.CTk):
             except VaultError as exc:
                 return say(str(exc))
             if not has:
-                return say("Email recovery wasn't turned on when this vault was made, so it can't be reset.")
+                return say("This vault was made before email recovery was set up, so it has no recovery "
+                           "key yet. If you remember your master password, sign in once and click "
+                           "“Turn on” to switch on email recovery.")
             if not self.cloud.configured:
                 return say("Email recovery isn't set up in this copy of HushKey.")
 
@@ -813,9 +1130,26 @@ class HushKeyApp(ctk.CTk):
         wordmark(titles, 22).pack(anchor="w")
         self.subtitle = ctk.CTkLabel(titles, text="", font=font(12), text_color=MUTED, anchor="w")
         self.subtitle.pack(fill="x")
-        ghost_button(top, "Sign out", lambda: self.sign_out(), width=100, height=40).pack(side="right")
+        ctk.CTkButton(top, text="Sign out", command=lambda: self.sign_out(), width=110, height=40,
+                      corner_radius=10, fg_color=SIGNOUT, hover_color=SIGNOUT_HOVER,
+                      text_color=("#FFFFFF", "#FFFFFF"), font=font(14, "bold")).pack(side="right")
         ghost_button(top, "Change master password", self.open_change_master,
                      height=40).pack(side="right", padx=(0, 10))
+        self.theme_switch(top).pack(side="right", padx=(0, 12))
+
+        self.recovery_btn = None
+        if self.cloud.configured and not self.vault.has_recovery:
+            banner = ctk.CTkFrame(wrap, fg_color=GOLD_SOFT, corner_radius=12, border_width=1, border_color=GOLD)
+            banner.pack(fill="x", pady=(16, 0))
+            ctk.CTkLabel(banner, text="Email recovery is off for this vault. Turn it on so you can reset "
+                                      "your master password by email if you ever forget it.",
+                         font=font(13), text_color=TEXT, anchor="w", justify="left",
+                         wraplength=640).pack(side="left", padx=16, pady=12, fill="x", expand=True)
+            self.recovery_btn = ctk.CTkButton(banner, text="Turn on", command=self.turn_on_recovery,
+                                              width=110, height=38, corner_radius=10, fg_color=GOLD,
+                                              hover_color=GOLD_HOVER, text_color=GOLD_INK,
+                                              font=font(14, "bold"))
+            self.recovery_btn.pack(side="right", padx=12)
 
         bar = ctk.CTkFrame(wrap, fg_color="transparent")
         bar.pack(fill="x", pady=(18, 12))
@@ -901,7 +1235,7 @@ class HushKeyApp(ctk.CTk):
                           ("Copy pass", lambda: self.copy(entry_id, 1)),
                           ("Edit", lambda: self.open_edit(entry_id))):
             ctk.CTkButton(btns, text=text, command=cmd, width=78, height=34, corner_radius=8,
-                          fg_color=RAISED, hover_color=BORDER, text_color="#C9CFDA",
+                          fg_color=RAISED, hover_color=BORDER, text_color=LABEL,
                           font=font(12)).pack(side="left", padx=3)
 
         for w in (row, avatar, name, hint, *cols):
@@ -1032,14 +1366,30 @@ class Dialog(ctk.CTkToplevel):
         self.transient(app)
         self.inner = ctk.CTkFrame(self, fg_color="transparent", width=width - 56)
         self.inner.pack(padx=28, pady=24, fill="both", expand=True)
-        self.bind("<Escape>", lambda _e: self.destroy())
+        self.bind("<Escape>", lambda _e: self.destroy(), add="+")
         # Windows opens pop-ups behind the main window sometimes, and
         # CustomTkinter swaps in its own icon after 200ms; fix both.
         self.after(250, self._front)
 
+    def center(self):
+        """Put the pop-up in the middle of the HushKey window (kept on screen)."""
+        import tkinter
+        try:
+            self.update_idletasks()
+            w = max(self.winfo_reqwidth(), self.winfo_width(), 1)
+            h = max(self.winfo_reqheight(), self.winfo_height(), 1)
+            x = self.app.winfo_rootx() + (self.app.winfo_width() - w) // 2
+            y = self.app.winfo_rooty() + (self.app.winfo_height() - h) // 2
+            x = max(0, min(x, self.winfo_screenwidth() - w))
+            y = max(0, min(y, self.winfo_screenheight() - h - 48))
+            tkinter.Wm.wm_geometry(self, f"+{x}+{y}")  # pixels, so no extra scaling
+        except Exception:
+            traceback.print_exc()
+
     def _front(self):
         if self.winfo_exists():
             set_window_icon(self)
+            self.center()
             self.lift()
             self.focus_force()
             try:
@@ -1076,7 +1426,7 @@ class EntryDialog(Dialog):
         self.pw.bind_key(lambda _e: self.bar.update_for(self.pw.get()))
 
         self.gen = ctk.CTkButton(c, text="Click this to generate a password for you", command=self.generate,
-                                 height=50, corner_radius=12, fg_color=ACCENT_SOFT, hover_color="#1A3328",
+                                 height=50, corner_radius=12, fg_color=ACCENT_SOFT, hover_color=ACCENT_SOFT_HOVER,
                                  border_width=2, border_color=ACCENT, text_color=ACCENT_HOVER,
                                  font=font(14, "bold"))
         self.gen.pack(fill="x", pady=(14, 4))
@@ -1092,7 +1442,7 @@ class EntryDialog(Dialog):
         if on_delete:
             ctk.CTkButton(row, text="Delete", command=self.delete, width=90, height=44, corner_radius=10,
                           fg_color="transparent", hover_color=DANGER_SOFT, border_width=1,
-                          border_color="#5A2A2E", text_color=DANGER, font=font(14)).pack(side="left")
+                          border_color=DANGER_BORDER, text_color=DANGER, font=font(14)).pack(side="left")
         primary_button(row, "Save login", self.save, width=130, height=44).pack(side="right")
         ghost_button(row, "Cancel", self.destroy, width=100, height=44).pack(side="right", padx=(0, 10))
 
@@ -1101,8 +1451,23 @@ class EntryDialog(Dialog):
             self.user.insert(0, current["username"])
             self.pw.set(current["password"])
             self.bar.update_for(current["password"])
-        self.bind("<Return>", lambda _e: self.save())
+        self.bind("<Return>", self._enter_key)
+        self.bind("<Escape>", self._escape)
+        self.center()
         self.after(300, self.name.focus_set)
+
+    def _escape(self, _e=None):
+        """Escape closes the logo list first; pressed again it closes the form."""
+        if self.logo.open:
+            self.logo.hide_results()
+            return "break"
+        self.destroy()
+
+    def _enter_key(self, event=None):
+        # Enter in the logo search picks the top logo instead of saving
+        if event is not None and str(event.widget).startswith(str(self.logo.search)):
+            return
+        self.save()
 
     def generate(self):
         self.generated += 1
@@ -1162,6 +1527,7 @@ class ChangeMasterDialog(Dialog):
         self.ok.pack(side="right")
         ghost_button(row, "Cancel", self.destroy, width=100, height=44).pack(side="right", padx=(0, 10))
         self.bind("<Return>", lambda _e: self.submit())
+        self.center()
 
     def submit(self):
         cur, new, again = self.current.get(), self.new.get(), self.again.get()
@@ -1214,13 +1580,24 @@ def selftest() -> int:
                               on_cancel=app.show_signin, remember=True),
         lambda: app.show_forgot_new(Vault("test@example.com", tmp).start_recovery(secret), "test@example.com"),
         lambda: app._enter(v, "test@example.com"),
+        lambda: app.toggle_theme(),
+        lambda: require(not app.is_dark, "switched to light mode"),
+        lambda: app.toggle_theme(),
+        lambda: require(app.is_dark, "switched back to dark mode"),
+        lambda: require(load_settings(tmp).get("theme") == "dark", "theme choice saved"),
         lambda: v.add("Riot main", "summoner99", "hunter2!", "riotgames") and app.refresh_rows(),
         lambda: v.add("My bank", "me", "pw12345!") and app.refresh_rows(),
         lambda: app.reveal(app.vault.list_titles()[0][0]),
         lambda: app.copy(app.vault.list_titles()[0][0], 1),
         lambda: app.open_add(),
         lambda: dialog().generate(),
+        lambda: dialog().logo.toggle(),
+        lambda: require(dialog().logo.open and len(dialog().logo.results.winfo_children()) > 60
+                        and "Couldn't" not in str(dialog().logo.note.cget("text")),
+                        "logo dropdown opens with the Top 50 + everyday icons"),
+        lambda: require(dialog()._escape() == "break" and not dialog().logo.open, "Escape closes the list"),
         lambda: (dialog().logo.search.insert(0, "riot"), dialog().logo.show_results()),
+        lambda: require(dialog().logo.open, "typing opens the list"),
         lambda: dialog().logo.choose("riotgames"),
         lambda: [w.destroy() for w in app.winfo_children() if isinstance(w, ctk.CTkToplevel)],
         lambda: app.open_edit(app.vault.list_titles()[0][0]),

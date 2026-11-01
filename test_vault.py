@@ -145,6 +145,18 @@ class VaultTests(unittest.TestCase):
         with self.assertRaises(VaultError):
             self.fresh().start_recovery(new_recovery_secret())
 
+    def test_turn_on_recovery_later(self):
+        v = self.new_vault(recovery=False)
+        eid = v.add("Old login", "u", "p")
+        self.assertFalse(v.has_recovery)
+        v.enable_recovery(self.secret)
+        self.assertTrue(v.has_recovery)
+        v.lock()
+        self.fresh().start_recovery(self.secret).complete("brand new pw", "brand new pw")
+        v2 = self.fresh()
+        v2.unlock("brand new pw")
+        self.assertEqual(v2.reveal(eid), ("u", "p"))
+
     def test_no_recovery_vault(self):
         v = self.new_vault(recovery=False)
         self.assertFalse(v.has_recovery)

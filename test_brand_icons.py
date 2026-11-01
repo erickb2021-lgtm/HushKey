@@ -14,13 +14,43 @@ class BrandIconTests(unittest.TestCase):
         self.assertEqual(brand_icons.search("riot")[0], ("riotgames", "Riot Games"))
 
     def test_popular_when_empty(self):
-        self.assertEqual(brand_icons.search("")[0][0], "riotgames")
+        self.assertEqual(brand_icons.search("")[0][0], "google")
+
+    def test_top_50_all_available(self):
+        top = brand_icons.sections()[0]
+        self.assertEqual(top[0], "Top 50 apps & games")
+        self.assertEqual(len(top[1]), 50)
+
+    def test_big_names_ranked_first(self):
+        self.assertEqual([t for _, t in brand_icons.search("s", 3)], ["Snapchat", "Spotify", "Steam"])
+        self.assertEqual(brand_icons.search("xbox")[0][0], "hk-controller")
 
     def test_suggest(self):
         self.assertEqual(brand_icons.suggest("Riot account 1"), "riotgames")
         self.assertEqual(brand_icons.suggest("discord main"), "discord")
         self.assertIsNone(brand_icons.suggest("my bank"))
-        self.assertIsNone(brand_icons.suggest("work email"))
+        self.assertEqual(brand_icons.suggest("work email"), "hk-work")
+
+    def test_everyday_icons_draw(self):
+        for slug, *_ in brand_icons.EVERYDAY:
+            self.assertIsNotNone(brand_icons.render(slug, 32), slug)
+
+    def test_own_picture(self):
+        import os
+        import tempfile
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "pic.png")
+            Image.new("RGB", (300, 200), (255, 0, 0)).save(path)
+            icon = brand_icons.picture_to_icon(path)
+            self.assertTrue(brand_icons.is_picture(icon))
+            self.assertEqual(brand_icons.title(icon), "Your picture")
+            self.assertEqual(brand_icons.render(icon, 40).size, (40, 40))
+            bad = os.path.join(d, "notes.txt")
+            with open(bad, "w") as f:
+                f.write("not a picture")
+            with self.assertRaises(ValueError):
+                brand_icons.picture_to_icon(bad)
 
     def test_render_is_see_through(self):
         img = brand_icons.render("riotgames", 64)
