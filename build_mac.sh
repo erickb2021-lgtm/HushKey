@@ -10,6 +10,6 @@ python app.py --selftest
 pyinstaller --noconfirm --clean --windowed --name HushKey \
   --icon assets/HushKey.icns --add-data "assets:assets" \
   --collect-data customtkinter \
-  --osx-bundle-identifier com.hushkey.app app.py
+  --osx-bundle-identifier com.erickbardales.hushkey app.py
 echo ""
 echo "Done! Your app is at: dist/HushKey.app  (drag it into Applications)"

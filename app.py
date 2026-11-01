@@ -19,11 +19,14 @@ from tkinter import messagebox
 
 import customtkinter as ctk
 
+import brand_icons
+from brand import draw_logo
 from cloud import Cloud, CloudError
-from vault import (MIN_MASTER_LENGTH, TamperError, Vault, VaultError,
+from vault import (MIN_MASTER_LENGTH, REMEMBER_DAYS, Vault, VaultError,
                    WrongPassword, check_new_master, generate_password,
                    looks_like_email, new_recovery_secret, new_vault_id,
                    normalize_email, password_strength)
+from version import __version__
 
 APP_NAME = "HushKey"
 AUTO_LOCK_SECONDS = 5 * 60      # sign out after 5 minutes with no activity
@@ -34,7 +37,7 @@ IS_MAC = sys.platform == "darwin"
 IS_WIN = os.name == "nt"
 MONO = "Menlo" if IS_MAC else ("Consolas" if IS_WIN else "DejaVu Sans Mono")
 
-# ---- colors (the green "safe" theme) ----
+# ---- colors (green = safe, gold = key) ----
 BG = "#0E1116"
 SURFACE = "#161A22"
 RAISED = "#1D222C"
@@ -46,19 +49,63 @@ ACCENT = "#3DDC97"
 ACCENT_HOVER = "#5BE6AA"
 ACCENT_INK = "#08281A"
 ACCENT_SOFT = "#14231D"
+GOLD = "#F2C14E"
 DANGER = "#FF8080"
 DANGER_SOFT = "#2A1618"
 DOTS = "•" * 10
 
 
-def resource(rel: str) -> str:
-    """Path to a bundled file, both from source and inside the packaged app."""
-    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base, rel)
-
-
 def font(size=14, weight="normal", mono=False):
     return ctk.CTkFont(family=MONO, size=size, weight=weight) if mono else ctk.CTkFont(size=size, weight=weight)
+
+
+# ==========================================================================
+# Logo + wordmark
+# ==========================================================================
+
+_logo_cache = {}
+
+
+def logo_image(size, tile=False):
+    """The HushKey logo, drawn in code (see brand.py) so it can't go missing."""
+    key = (size, tile)
+    if key not in _logo_cache:
+        img = draw_logo(size * 2, tile=tile)  # 2x for sharp edges on high-res screens
+        _logo_cache[key] = ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
+    return _logo_cache[key]
+
+
+def wordmark(parent, size=26):
+    """'HushKey' with Hush in green and Key in gold."""
+    row = ctk.CTkFrame(parent, fg_color="transparent")
+    ctk.CTkLabel(row, text="Hush", font=font(size, "bold"), text_color=ACCENT, padx=0).pack(side="left")
+    ctk.CTkLabel(row, text="Key", font=font(size, "bold"), text_color=GOLD, padx=0).pack(side="left")
+    return row
+
+
+_icon_files = {}
+
+
+def set_window_icon(win):
+    """Put the HushKey logo in the title bar / taskbar (Windows) and dock (Mac)."""
+    try:
+        from PIL import ImageTk
+        if IS_WIN:
+            if "ico" not in _icon_files:
+                path = os.path.join(tempfile.gettempdir(), f"hushkey-{__version__}.ico")
+                draw_logo(256).save(path, sizes=[(16, 16), (32, 32), (48, 48), (256, 256)])
+                _icon_files["ico"] = path
+            win.iconbitmap(_icon_files["ico"])
+        photo = ImageTk.PhotoImage(draw_logo(128))
+        win.iconphoto(True, photo)
+        win._hushkey_icon = photo  # keep a reference so Tk doesn't drop it
+    except Exception:
+        traceback.print_exc()
+
+
+def brand_image(slug, size):
+    img = brand_icons.render(slug, size * 2) if slug else None
+    return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size)) if img else None
 
 
 # ==========================================================================
@@ -79,9 +126,9 @@ def ghost_button(parent, text, command, **kw):
                          border_color=BORDER, text_color=TEXT, font=font(14), **kw)
 
 
-def link_button(parent, text, command, size=13):
+def link_button(parent, text, command, size=13, color=ACCENT):
     return ctk.CTkButton(parent, text=text, command=command, fg_color="transparent",
-                         hover=False, text_color=ACCENT, width=0, height=24,
+                         hover=False, text_color=color, width=0, height=24,
                          font=font(size, "bold"))
 
 
@@ -102,14 +149,22 @@ def field_label(parent, text):
     return ctk.CTkLabel(parent, text=text, font=font(13, "bold"), text_color="#C9CFDA", anchor="w")
 
 
+def checkbox(parent, text, checked=True):
+    var = ctk.BooleanVar(value=checked)
+    box = ctk.CTkCheckBox(parent, text=text, variable=var, onvalue=True, offvalue=False,
+                          font=font(13), text_color="#C9CFDA", fg_color=ACCENT, hover_color=ACCENT_HOVER,
+                          border_color=BORDER, checkmark_color=ACCENT_INK, corner_radius=6)
+    return box, var
+
+
 class PasswordField(ctk.CTkFrame):
     """A password box with an optional Show/Hide button."""
 
-    def __init__(self, parent, placeholder="", visible=False, toggle=True):
+    def __init__(self, parent, placeholder="", visible=False, toggle=True, width=FIELD_WIDTH):
         super().__init__(parent, fg_color="transparent")
         self.visible = visible
         self.entry = entry(self, placeholder, show=None if visible else "•", mono=visible,
-                           width=FIELD_WIDTH - 72 if toggle else FIELD_WIDTH)
+                           width=width - 72 if toggle else width)
         self.entry.pack(side="left", fill="x", expand=True)
         self.toggle = None
         if toggle:
@@ -160,12 +215,98 @@ class StrengthBar(ctk.CTkFrame):
         self.label.configure(text=label)
 
 
-def logo_image(size):
-    try:
-        from PIL import Image
-        return ctk.CTkImage(Image.open(resource("assets/logo.png")), size=(size, size))
-    except Exception:
-        return None
+class LogoPicker(ctk.CTkFrame):
+    """'Choose a logo for this login': type to search, or click the arrow
+    to browse popular apps. Logos have see-through backgrounds."""
+
+    MAX_RESULTS = 6
+
+    def __init__(self, parent, slug=""):
+        super().__init__(parent, fg_color="transparent")
+        self.slug = slug or ""
+        self.picked_by_hand = bool(slug)
+        self.open = False
+
+        field_label(self, "Choose a logo for this login (optional)").pack(fill="x")
+        row = ctk.CTkFrame(self, fg_color="transparent")
+        row.pack(fill="x", pady=(6, 0))
+        self.row = row
+        self.preview = ctk.CTkLabel(row, text="", width=46, height=46, corner_radius=10, fg_color=RAISED,
+                                    text_color=SUBTLE, font=font(18, "bold"))
+        self.preview.pack(side="left")
+        self.search = ctk.CTkEntry(row, placeholder_text="Type an app, e.g. riot", width=FIELD_WIDTH - 46 - 56 - 16,
+                                   height=46, corner_radius=10, fg_color=BG, border_color=BORDER,
+                                   text_color=TEXT, placeholder_text_color=SUBTLE, font=font(14))
+        self.search.pack(side="left", fill="x", expand=True, padx=8)
+        self.arrow = ctk.CTkButton(row, text="▾", width=46, height=46, corner_radius=10, fg_color=RAISED,
+                                   hover_color=BORDER, text_color=TEXT, font=font(18), command=self.toggle)
+        self.arrow.pack(side="left")
+        self.search.bind("<KeyRelease>", self._typed, add="+")
+        self.search.bind("<FocusIn>", lambda _e: self.show_results(), add="+")
+
+        self.results = ctk.CTkScrollableFrame(self, height=6 * 40, fg_color=SURFACE, corner_radius=10,
+                                              border_width=1, border_color=BORDER)
+        self.note = ctk.CTkLabel(self, text="", font=font(12), text_color=SUBTLE, anchor="w")
+        self.note.pack(fill="x")
+        self._refresh_preview()
+        if self.slug:
+            self.search.insert(0, brand_icons.title(self.slug) or "")
+
+    def _refresh_preview(self):
+        img = brand_image(self.slug, 30)
+        self.preview.configure(image=img if img else None, text="" if img else "?")
+        if not img:
+            self.preview.configure(image="")
+
+    def toggle(self):
+        self.hide_results() if self.open else self.show_results()
+
+    def _typed(self, _e=None):
+        self.show_results()
+
+    def show_results(self):
+        for w in self.results.winfo_children():
+            w.destroy()
+        hits = brand_icons.search(self.search.get(), self.MAX_RESULTS)
+        ctk.CTkButton(self.results, text="   No logo (use first letter)", anchor="w", height=36,
+                      fg_color="transparent", hover_color=RAISED, text_color=MUTED, font=font(13),
+                      command=lambda: self.choose("")).pack(fill="x")
+        for slug, name in hits:
+            ctk.CTkButton(self.results, text="  " + name, image=brand_image(slug, 22), compound="left",
+                          anchor="w", height=36, fg_color="transparent", hover_color=RAISED,
+                          text_color=TEXT, font=font(14),
+                          command=lambda s=slug: self.choose(s)).pack(fill="x")
+        if not hits:
+            ctk.CTkLabel(self.results, text="No logo found. Try another name.", font=font(13),
+                         text_color=SUBTLE).pack(pady=6)
+        if not self.open:
+            self.results.pack(fill="x", pady=(6, 0), after=self.row)
+            self.open = True
+            self.arrow.configure(text="▴")
+
+    def hide_results(self):
+        if self.open:
+            self.results.pack_forget()
+            self.open = False
+            self.arrow.configure(text="▾")
+
+    def choose(self, slug, by_hand=True):
+        self.slug = slug or ""
+        self.picked_by_hand = by_hand
+        self.search.delete(0, "end")
+        if slug:
+            self.search.insert(0, brand_icons.title(slug) or "")
+        self._refresh_preview()
+        self.note.configure(text="" if by_hand or not slug else "Suggested from the client name. Change it any time.")
+        self.hide_results()
+
+    def suggest_from(self, client_name):
+        """Auto-pick a logo from the client name, unless the user chose one."""
+        if self.picked_by_hand:
+            return
+        slug = brand_icons.suggest(client_name) or ""
+        if slug != self.slug:
+            self.choose(slug, by_hand=False)
 
 
 # ==========================================================================
@@ -177,13 +318,9 @@ class HushKeyApp(ctk.CTk):
         ctk.set_appearance_mode("dark")
         super().__init__(fg_color=BG)
         self.title(APP_NAME)
-        self.geometry("980x660")
-        self.minsize(860, 600)
-        try:
-            if IS_WIN:
-                self.iconbitmap(resource("assets/HushKey.ico"))
-        except Exception:
-            pass
+        self.geometry("1000x700")
+        self.minsize(880, 640)
+        set_window_icon(self)
 
         self.data_dir = data_dir
         self.cloud = cloud or Cloud()
@@ -198,6 +335,7 @@ class HushKeyApp(ctk.CTk):
         self.screen = 0           # bumps every screen change; stale callbacks are ignored
         self._jobs = queue.Queue()
         self.rows = {}
+        self.remember_var = None
 
         self.body = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
         self.body.pack(fill="both", expand=True)
@@ -207,6 +345,8 @@ class HushKeyApp(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self.quit_app)
         self.after(60, self._poll_jobs)
         self.after(1000, self._tick)
+        # load the logo list in the background so the first search is instant
+        threading.Thread(target=brand_icons.load, daemon=True).start()
         self.show_signin()
 
     # ---------------------------------------------------------------- helpers
@@ -225,6 +365,12 @@ class HushKeyApp(ctk.CTk):
         inner = ctk.CTkFrame(card, fg_color="transparent", width=width - 64)
         inner.pack(padx=32, pady=30, fill="both")
         return inner
+
+    def _brand_header(self, parent):
+        top = ctk.CTkFrame(parent, fg_color="transparent")
+        top.pack(pady=(0, 14))
+        ctk.CTkLabel(top, text="", image=logo_image(44)).pack(side="left", padx=(0, 10))
+        wordmark(top, 28).pack(side="left")
 
     def _heading(self, parent, title, subtitle="", step=""):
         if step:
@@ -319,10 +465,8 @@ class HushKeyApp(ctk.CTk):
     def show_signin(self, notice="", ok=False):
         self._clear()
         c = self._card()
-        img = logo_image(64)
-        if img:
-            ctk.CTkLabel(c, text="", image=img).pack(pady=(0, 10))
-        ctk.CTkLabel(c, text="Welcome back", font=font(26, "bold"), text_color=TEXT).pack()
+        self._brand_header(c)
+        ctk.CTkLabel(c, text="Welcome back", font=font(22, "bold"), text_color=TEXT).pack()
         ctk.CTkLabel(c, text="Sign in to unlock your vault", font=font(14), text_color=MUTED).pack(pady=(4, 18))
 
         field_label(c, "Email").pack(fill="x")
@@ -361,8 +505,7 @@ class HushKeyApp(ctk.CTk):
             def ok_cb(_):
                 self.failed = 0
                 self.last_email = addr
-                self.vault = v
-                self.show_main()
+                self._after_password(v, addr, say, unlock_btn)
 
             def err_cb(exc):
                 if isinstance(exc, WrongPassword):
@@ -388,7 +531,35 @@ class HushKeyApp(ctk.CTk):
 
         ctk.CTkLabel(c, text="Encrypted on this device. Your master password never leaves it.",
                      font=font(12), text_color=SUBTLE).pack(pady=(14, 0))
+        ctk.CTkLabel(c, text=f"v{__version__}", font=font(11), text_color=SUBTLE).pack(pady=(4, 0))
         (pw.focus() if self.last_email else email.focus_set())
+
+    def _after_password(self, v: Vault, addr: str, say, button):
+        """Right password. On a computer that isn't remembered, also ask for
+        a code sent to the user's email (two-step sign-in)."""
+        if not self.cloud.configured or v.is_device_remembered():
+            return self._enter(v, addr)
+
+        def cancel():
+            v.lock()
+            self.show_signin()
+
+        def done(_):
+            if self.remember_var is not None and self.remember_var.get():
+                v.remember_device()
+            self._enter(v, addr)
+
+        def failed(exc):
+            v.lock()
+            say(self._err_text(exc))
+
+        self.run_bg(lambda: self.cloud.send_code(addr),
+                    lambda _: self.show_code(
+                        addr, "Enter your sign-in code",
+                        "This computer isn't remembered yet, so we emailed you a 6-digit code.",
+                        on_verified=lambda s: (lambda: None), on_done=done, on_cancel=cancel,
+                        remember=True),
+                    failed, button, "Sending code…")
 
     # ========================================================= CREATE VAULT
 
@@ -445,12 +616,18 @@ class HushKeyApp(ctk.CTk):
                     v.create(master, secret, vid)                   # ...then the local vault
                 return work
 
+            def done(_):
+                if self.remember_var is not None and self.remember_var.get():
+                    v.remember_device()
+                self._enter(v, addr)
+
             self.run_bg(lambda: self.cloud.send_code(addr),
                         lambda _: self.show_code(
-                            addr, "Confirm your email", "",
-                            on_verified=after_code,
-                            on_done=lambda _: self._enter(v, addr),
-                            on_cancel=self.show_create, done_text="Creating your vault…"),
+                            addr, "Confirm your email",
+                            "We sent a welcome email with your 6-digit sign-up code.",
+                            on_verified=after_code, on_done=done,
+                            on_cancel=self.show_create, done_text="Creating your vault…",
+                            remember=True),
                         lambda exc: say(self._err_text(exc)), go, "Sending code…")
 
         go = self._button_row(c, self.show_signin, "Continue" if recovery_on else "Create vault", submit)
@@ -465,22 +642,30 @@ class HushKeyApp(ctk.CTk):
 
     # ============================================================ CODE SCREEN
 
-    def show_code(self, addr, title, step, on_verified, on_done, on_cancel, done_text="Checking…"):
+    def show_code(self, addr, title, intro, on_verified, on_done, on_cancel,
+                  done_text="Checking…", step="", remember=False):
         """Shared 'enter the 6-digit code' screen.
 
-        on_verified(session) returns a function to run in the background after a
-        correct code (e.g. download the recovery secret); on_done gets its result.
+        The code is checked by the email service: it must be the exact code
+        sent to this email, it works once, and it expires after 10 minutes.
+        on_verified(session) returns a function to run in the background after
+        a correct code (e.g. download the recovery secret); on_done gets its result.
         """
         self._clear()
         c = self._card()
-        self._heading(c, title, f"We sent a code to {addr}. Enter it below. "
+        self._heading(c, title, f"{intro} It was sent to {addr}. "
                                 "Check your spam folder if you don't see it.", step)
 
-        field_label(c, "Code from the email").pack(fill="x", pady=(18, 0))
+        field_label(c, "6-digit code from the email").pack(fill="x", pady=(18, 0))
         code = ctk.CTkEntry(c, placeholder_text="123456", width=FIELD_WIDTH, height=60, corner_radius=10,
                             fg_color=BG, border_color=BORDER, text_color=TEXT,
                             placeholder_text_color=SUBTLE, justify="center", font=font(28, "bold", mono=True))
         code.pack(fill="x", pady=(6, 6))
+
+        self.remember_var = None
+        if remember:
+            box, self.remember_var = checkbox(c, f"Remember this device for {REMEMBER_DAYS} days")
+            box.pack(fill="x", pady=(6, 4))
 
         resend_row = ctk.CTkFrame(c, fg_color="transparent")
         resend_row.pack(fill="x")
@@ -500,7 +685,11 @@ class HushKeyApp(ctk.CTk):
                 session = self.cloud.verify_code(addr, typed)
                 return on_verified(session)()
 
-            self.run_bg(work, on_done, lambda exc: say(self._err_text(exc)), verify, done_text)
+            def wrong(exc):
+                code.delete(0, "end")
+                say(self._err_text(exc))
+
+            self.run_bg(work, on_done, wrong, verify, done_text)
 
         verify = self._button_row(c, on_cancel, "Verify code", submit)
         code.bind("<Return>", submit)
@@ -542,10 +731,10 @@ class HushKeyApp(ctk.CTk):
 
             self.run_bg(lambda: self.cloud.send_code(addr),
                         lambda _: self.show_code(
-                            addr, "Check your email", "Step 2 of 3",
+                            addr, "Check your email", "We sent you a 6-digit code.",
                             on_verified=got_secret,
                             on_done=lambda reset: self.show_forgot_new(reset, addr),
-                            on_cancel=lambda: self.show_signin()),
+                            on_cancel=lambda: self.show_signin(), step="Step 2 of 3"),
                         lambda exc: say(self._err_text(exc)), send, "Sending code…")
 
         send = self._button_row(c, lambda: self.show_signin(), "Send code", submit)
@@ -618,12 +807,10 @@ class HushKeyApp(ctk.CTk):
 
         top = ctk.CTkFrame(wrap, fg_color="transparent")
         top.pack(fill="x")
-        img = logo_image(40)
-        if img:
-            ctk.CTkLabel(top, text="", image=img).pack(side="left", padx=(0, 12))
+        ctk.CTkLabel(top, text="", image=logo_image(46)).pack(side="left", padx=(0, 12))
         titles = ctk.CTkFrame(top, fg_color="transparent")
         titles.pack(side="left")
-        ctk.CTkLabel(titles, text="My vault", font=font(20, "bold"), text_color=TEXT, anchor="w").pack(fill="x")
+        wordmark(titles, 22).pack(anchor="w")
         self.subtitle = ctk.CTkLabel(titles, text="", font=font(12), text_color=MUTED, anchor="w")
         self.subtitle.pack(fill="x")
         ghost_button(top, "Sign out", lambda: self.sign_out(), width=100, height=40).pack(side="right")
@@ -642,10 +829,23 @@ class HushKeyApp(ctk.CTk):
         self.listbox = ctk.CTkScrollableFrame(wrap, fg_color="transparent", corner_radius=0)
         self.listbox.pack(fill="both", expand=True)
 
-        self.status = ctk.CTkLabel(wrap, text="Everything stays hidden until you click a login.",
+        foot = ctk.CTkFrame(wrap, fg_color="transparent")
+        foot.pack(fill="x", pady=(10, 0))
+        self.status = ctk.CTkLabel(foot, text="Everything stays hidden until you click a login.",
                                    font=font(12), text_color=SUBTLE, anchor="w")
-        self.status.pack(fill="x", pady=(10, 0))
+        self.status.pack(side="left", fill="x", expand=True)
+        if self.cloud.configured and self.vault.is_device_remembered():
+            self.forget_link = link_button(foot, "Forget this device", self.forget_device, size=12, color=MUTED)
+            self.forget_link.pack(side="right")
+        ctk.CTkLabel(foot, text=f"v{__version__}", font=font(11), text_color=SUBTLE).pack(side="right", padx=10)
         self.refresh_rows()
+
+    def forget_device(self):
+        self.vault.forget_device()
+        if getattr(self, "forget_link", None) is not None and self.forget_link.winfo_exists():
+            self.forget_link.destroy()
+        self.status.configure(text="This computer will ask for an email code at the next sign-in.",
+                              text_color=ACCENT)
 
     def refresh_rows(self, highlight=None):
         if not (self.vault and self.vault.is_unlocked):
@@ -655,20 +855,20 @@ class HushKeyApp(ctk.CTk):
             w.destroy()
         self.rows = {}
         n = self.vault.entry_count
-        self.subtitle.configure(text=f"{self.vault.email} · {n} login{'s' if n != 1 else ''}")
+        self.subtitle.configure(text=f"My vault · {self.vault.email} · {n} login{'s' if n != 1 else ''}")
         query = self.search.get().strip().lower()
-        items = [(i, t) for i, t in self.vault.list_titles() if query in t.lower()]
+        items = [e for e in self.vault.list_entries() if query in e["title"].lower()]
         if not items:
             msg = ("No logins yet. Click “+ Add login” to save your first one." if n == 0
                    else "No logins match your search.")
             ctk.CTkLabel(self.listbox, text=msg, font=font(14), text_color=MUTED).pack(pady=40)
             return
-        for entry_id, title in items:
-            self._make_row(entry_id, title)
+        for e in items:
+            self._make_row(e["id"], e["title"], e["icon"])
         if highlight in self.rows:
             self.reveal(highlight)
 
-    def _make_row(self, entry_id, title):
+    def _make_row(self, entry_id, title, icon=""):
         row = ctk.CTkFrame(self.listbox, fg_color=SURFACE, corner_radius=12, border_width=1,
                            border_color=BORDER)
         row.pack(fill="x", pady=5, padx=(0, 6))
@@ -676,8 +876,10 @@ class HushKeyApp(ctk.CTk):
         row.grid_columnconfigure(2, weight=2)
         row.grid_columnconfigure(3, weight=2)
 
-        avatar = ctk.CTkLabel(row, text=(title[:1] or "?").upper(), width=42, height=42, corner_radius=10,
-                              fg_color=RAISED, text_color=ACCENT, font=font(17, "bold"))
+        img = brand_image(icon, 26)
+        avatar = ctk.CTkLabel(row, text="" if img else (title[:1] or "?").upper(), image=img,
+                              width=46, height=46, corner_radius=10, fg_color=RAISED,
+                              text_color=ACCENT, font=font(17, "bold"))
         avatar.grid(row=0, column=0, rowspan=2, padx=(14, 12), pady=12)
 
         name = ctk.CTkLabel(row, text=title, font=font(15, "bold"), text_color=TEXT, anchor="w")
@@ -770,8 +972,8 @@ class HushKeyApp(ctk.CTk):
     def open_add(self):
         EntryDialog(self, "Add a login", None, on_save=self._save_new)
 
-    def _save_new(self, title, username, password):
-        new_id = self.vault.add(title, username, password)
+    def _save_new(self, title, username, password, icon):
+        new_id = self.vault.add(title, username, password, icon)
         self.refresh_rows()
         self.status.configure(text=f"Saved “{title}”.", text_color=ACCENT)
         return new_id
@@ -783,8 +985,8 @@ class HushKeyApp(ctk.CTk):
             self.status.configure(text=str(exc), text_color=DANGER)
             return
 
-        def save(title, username, password):
-            self.vault.update(entry_id, title, username, password)
+        def save(title, username, password, icon):
+            self.vault.update(entry_id, title, username, password, icon)
             self.refresh_rows()
             self.status.configure(text=f"Updated “{title}”.", text_color=ACCENT)
 
@@ -822,7 +1024,7 @@ class HushKeyApp(ctk.CTk):
 # ==========================================================================
 
 class Dialog(ctk.CTkToplevel):
-    def __init__(self, app: HushKeyApp, title, width=480):
+    def __init__(self, app: HushKeyApp, title, width=500):
         super().__init__(app, fg_color=SURFACE)
         self.app = app
         self.title(title)
@@ -831,11 +1033,13 @@ class Dialog(ctk.CTkToplevel):
         self.inner = ctk.CTkFrame(self, fg_color="transparent", width=width - 56)
         self.inner.pack(padx=28, pady=24, fill="both", expand=True)
         self.bind("<Escape>", lambda _e: self.destroy())
-        # Windows sometimes opens pop-ups behind the main window; bring it forward.
-        self.after(120, self._front)
+        # Windows opens pop-ups behind the main window sometimes, and
+        # CustomTkinter swaps in its own icon after 200ms; fix both.
+        self.after(250, self._front)
 
     def _front(self):
         if self.winfo_exists():
+            set_window_icon(self)
             self.lift()
             self.focus_force()
             try:
@@ -852,16 +1056,20 @@ class EntryDialog(Dialog):
         c = self.inner
         ctk.CTkLabel(c, text=title, font=font(20, "bold"), text_color=TEXT, anchor="w").pack(fill="x")
 
-        field_label(c, "Client name").pack(fill="x", pady=(16, 0))
-        self.name = entry(c, "e.g. Riot account 1")
-        self.name.pack(fill="x", pady=(6, 12))
+        field_label(c, "Client name").pack(fill="x", pady=(14, 0))
+        self.name = entry(c, "Type client name", width=FIELD_WIDTH + 68)
+        self.name.pack(fill="x", pady=(6, 10))
+
+        self.logo = LogoPicker(c, slug=(current or {}).get("icon", ""))
+        self.logo.pack(fill="x", pady=(0, 6))
+        self.name.bind("<KeyRelease>", lambda _e: self.logo.suggest_from(self.name.get()), add="+")
 
         field_label(c, "Username").pack(fill="x")
-        self.user = entry(c, "Your username or email for that site")
-        self.user.pack(fill="x", pady=(6, 12))
+        self.user = entry(c, "Type username or email", width=FIELD_WIDTH + 68)
+        self.user.pack(fill="x", pady=(6, 10))
 
         field_label(c, "Password").pack(fill="x")
-        self.pw = PasswordField(c, "Type a password, or generate below")
+        self.pw = PasswordField(c, "Type a password, or generate below", width=FIELD_WIDTH + 68)
         self.pw.pack(fill="x", pady=(6, 6))
         self.bar = StrengthBar(c)
         self.bar.pack(fill="x")
@@ -871,16 +1079,16 @@ class EntryDialog(Dialog):
                                  height=50, corner_radius=12, fg_color=ACCENT_SOFT, hover_color="#1A3328",
                                  border_width=2, border_color=ACCENT, text_color=ACCENT_HOVER,
                                  font=font(14, "bold"))
-        self.gen.pack(fill="x", pady=(16, 4))
+        self.gen.pack(fill="x", pady=(14, 4))
         self.gen_hint = ctk.CTkLabel(c, text="We'll make a long, random password. Click as many times as you like.",
-                                     font=font(12), text_color=MUTED, wraplength=420)
+                                     font=font(12), text_color=MUTED, wraplength=440)
         self.gen_hint.pack(fill="x")
 
         self.say = ctk.CTkLabel(c, text="", font=font(13), text_color=DANGER, anchor="w")
         self.say.pack(fill="x", pady=(8, 0))
 
         row = ctk.CTkFrame(c, fg_color="transparent")
-        row.pack(fill="x", pady=(10, 0))
+        row.pack(fill="x", pady=(8, 0))
         if on_delete:
             ctk.CTkButton(row, text="Delete", command=self.delete, width=90, height=44, corner_radius=10,
                           fg_color="transparent", hover_color=DANGER_SOFT, border_width=1,
@@ -894,7 +1102,7 @@ class EntryDialog(Dialog):
             self.pw.set(current["password"])
             self.bar.update_for(current["password"])
         self.bind("<Return>", lambda _e: self.save())
-        self.after(150, self.name.focus_set)
+        self.after(300, self.name.focus_set)
 
     def generate(self):
         self.generated += 1
@@ -909,11 +1117,11 @@ class EntryDialog(Dialog):
     def save(self):
         title, user, pw = self.name.get().strip(), self.user.get().strip(), self.pw.get()
         if not title:
-            return self.say.configure(text="Give it a client name, like “Riot account 1”.")
+            return self.say.configure(text="Type a client name first.")
         if not pw:
             return self.say.configure(text="Type a password, or click the generate button.")
         try:
-            self.on_save(title, user, pw)
+            self.on_save(title, user, pw, self.logo.slug)
         except VaultError as exc:
             return self.say.configure(text=str(exc))
         self.destroy()
@@ -976,8 +1184,8 @@ class ChangeMasterDialog(Dialog):
 # ==========================================================================
 
 def selftest() -> int:
-    from vault import new_recovery_secret as nrs
     failures = []
+    log_path = os.environ.get("HUSHKEY_SELFTEST_LOG")
     tmp = tempfile.mkdtemp(prefix="hushkey-selftest-")
     app = HushKeyApp(data_dir=tmp, cloud=Cloud("", ""))
 
@@ -985,22 +1193,35 @@ def selftest() -> int:
         failures.append("".join(traceback.format_exception(exc, val, tb)))
     app.report_callback_exception = report
 
-    secret = nrs()
+    def require(cond, what):
+        if not cond:
+            raise AssertionError(what)
+
+    def dialog():
+        return [w for w in app.winfo_children() if isinstance(w, EntryDialog)][0]
+
+    secret = new_recovery_secret()
     v = Vault("test@example.com", tmp)
     v.create("selftest password", secret)
     steps = [
+        lambda: require(draw_logo(64).size == (64, 64), "logo draws"),
+        lambda: require(brand_icons.count() > 3000, "logo list bundled"),
+        lambda: require(brand_icons.render("riotgames", 32) is not None, "Riot logo draws"),
         lambda: app.show_create(),
         lambda: app.show_forgot_email("test@example.com"),
-        lambda: app.show_code("test@example.com", "Check your email", "Step 2 of 3",
+        lambda: app.show_code("test@example.com", "Enter your sign-in code", "Test.",
                               on_verified=lambda s: (lambda: None), on_done=lambda _: None,
-                              on_cancel=app.show_signin),
+                              on_cancel=app.show_signin, remember=True),
         lambda: app.show_forgot_new(Vault("test@example.com", tmp).start_recovery(secret), "test@example.com"),
         lambda: app._enter(v, "test@example.com"),
-        lambda: v.add("Riot account 1", "summoner99", "hunter2!") and app.refresh_rows(),
+        lambda: v.add("Riot main", "summoner99", "hunter2!", "riotgames") and app.refresh_rows(),
+        lambda: v.add("My bank", "me", "pw12345!") and app.refresh_rows(),
         lambda: app.reveal(app.vault.list_titles()[0][0]),
         lambda: app.copy(app.vault.list_titles()[0][0], 1),
         lambda: app.open_add(),
-        lambda: [w for w in app.winfo_children() if isinstance(w, EntryDialog)][0].generate(),
+        lambda: dialog().generate(),
+        lambda: (dialog().logo.search.insert(0, "riot"), dialog().logo.show_results()),
+        lambda: dialog().logo.choose("riotgames"),
         lambda: [w.destroy() for w in app.winfo_children() if isinstance(w, ctk.CTkToplevel)],
         lambda: app.open_edit(app.vault.list_titles()[0][0]),
         lambda: [w.destroy() for w in app.winfo_children() if isinstance(w, ctk.CTkToplevel)],
@@ -1010,20 +1231,22 @@ def selftest() -> int:
     ]
 
     def run(i=0):
-        if i < len(steps):
-            try:
-                steps[i]()
-            except Exception:
-                failures.append(f"step {i}:\n" + traceback.format_exc())
-            if i < len(steps) - 1:
-                app.after(300, lambda: run(i + 1))
+        try:
+            steps[i]()
+        except Exception:
+            failures.append(f"step {i}:\n" + traceback.format_exc())
+        if i < len(steps) - 1:
+            app.after(300, lambda: run(i + 1))
 
     app.after(500, run)
-    app.after(30_000, app.destroy)  # safety net
+    app.after(60_000, app.destroy)  # safety net
     app.mainloop()
-    for f in failures:
-        print(f, file=sys.stderr)
-    print("SELFTEST", "FAILED" if failures else "PASSED", f"({len(steps)} steps)")
+    result = "SELFTEST " + ("FAILED" if failures else "PASSED") + f" ({len(steps)} steps)"
+    text = "\n".join(failures + [result])
+    print(text, file=sys.stderr if failures else sys.stdout)
+    if log_path:
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(text + "\n")
     return 1 if failures else 0
 
 

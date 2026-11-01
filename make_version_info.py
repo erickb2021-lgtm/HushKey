@@ -8,7 +8,9 @@ Usage:  python packaging/make_version_info.py 1.2.3
 import os
 import sys
 
-version = (sys.argv[1] if len(sys.argv) > 1 else "1.0.0").lstrip("vV")
+PUBLISHER = "Erick Bardales"
+
+version = (sys.argv[1] if len(sys.argv) > 1 else "2.0.1").lstrip("vV")
 parts = [int(p) if p.isdigit() else 0 for p in version.split(".")[:4]]
 parts += [0] * (4 - len(parts))
 ver_tuple = tuple(parts)
@@ -19,11 +21,11 @@ template = f"""VSVersionInfo(
                     mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
   kids=[
     StringFileInfo([StringTable('040904B0', [
-      StringStruct('CompanyName', 'HushKey'),
+      StringStruct('CompanyName', '{PUBLISHER}'),
       StringStruct('FileDescription', 'HushKey Password Manager'),
       StringStruct('FileVersion', '{ver_str}'),
       StringStruct('InternalName', 'HushKey'),
-      StringStruct('LegalCopyright', 'Open source - see GitHub'),
+      StringStruct('LegalCopyright', 'Copyright (c) 2026 {PUBLISHER}'),
       StringStruct('OriginalFilename', 'HushKey.exe'),
       StringStruct('ProductName', 'HushKey'),
       StringStruct('ProductVersion', '{ver_str}')])]),

@@ -194,6 +194,53 @@ class VaultTests(unittest.TestCase):
         v.add("First", "a", "b")
         self.assertTrue(os.path.isfile(v.backup_path))
 
+    # ---- logos + remember device ----
+
+    def test_logo_saved_encrypted(self):
+        v = self.new_vault()
+        eid = v.add("Riot main", "u", "p", icon="riotgames")
+        self.assertEqual(v.list_entries()[0]["icon"], "riotgames")
+        with open(v.path, encoding="utf-8") as f:
+            self.assertNotIn("riotgames", f.read())
+        v.update(eid, "Riot main", "u", "p", icon="")
+        self.assertEqual(v.get(eid)["icon"], "")
+
+    def test_remember_device(self):
+        v = self.new_vault()
+        self.assertFalse(v.is_device_remembered())
+        v.remember_device()
+        v.lock()
+        v2 = self.fresh()
+        v2.unlock(MASTER)
+        self.assertTrue(v2.is_device_remembered())
+        v2.forget_device()
+        self.assertFalse(v2.is_device_remembered())
+
+    def test_remembered_device_expires(self):
+        v = self.new_vault()
+        v.remember_device(days=-1)
+        self.assertFalse(v.is_device_remembered())
+
+    def test_copied_vault_on_other_computer_not_remembered(self):
+        import vault as vmod
+        v = self.new_vault()
+        v.remember_device()
+        real = vmod.device_id
+        vmod.device_id = lambda: "some-other-computer"
+        try:
+            self.assertFalse(v.is_device_remembered())
+        finally:
+            vmod.device_id = real
+
+    def test_faked_remember_flag_detected(self):
+        v = self.new_vault()
+        data = self.load(v)
+        from vault import device_id
+        data["devices"] = {device_id(): 9999999999}  # attacker edits the file
+        self.dump(v, data)
+        with self.assertRaises(TamperError):
+            self.fresh().unlock(MASTER)
+
     # ---- helpers ----
 
     def test_generate_password(self):

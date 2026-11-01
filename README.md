@@ -21,11 +21,12 @@
 
 ## How to use it
 
-1. **Create a vault:** enter your email and a master password. Type the password once where you can see it, then again **hidden, from memory**. We email you a code to confirm the email is yours.
-2. **Sign in** with your email and master password.
+1. **Create a vault:** enter your email and a master password. Type the password once where you can see it, then again **hidden, from memory**. You'll get a **welcome email** with a 6-digit code to confirm the email is yours.
+2. **Sign in** with your email and master password. On a computer that isn't remembered, HushKey also emails you a **6-digit sign-in code**. Only the exact code sent to your email works. Tick **Remember this device for 30 days** to skip the code on this computer. You can undo it any time with **Forget this device** at the bottom of your vault.
 3. Click **+ Add login** and fill in:
-   - **Client name:** `Riot account 1`
-   - **Username:** `xxxxxx`
+   - **Client name:** type the name of the account
+   - **Choose a logo for this login:** HushKey suggests one from the client name. Or type an app (e.g. `riot`) or click the **▾** arrow to browse. Over 3,400 app logos, all with see-through backgrounds.
+   - **Username:** the username or email for that account
    - **Password:** type one, or click **"Click this to generate a password for you"**. Click it as many times as you like until you get one you like.
 4. Usernames and passwords are **always hidden** (`••••••••••`). **Click a login** to reveal it. Click again to hide it, or it hides itself after 30 seconds.
 5. **Copy user / Copy pass** copies to your clipboard, and HushKey wipes it after 20 seconds.
@@ -69,7 +70,10 @@ HushKey uses a trick called **key wrapping**:
 - **Constant-time compare:** checking a password takes the same time however close a guess is, so timing leaks nothing.
 - **Anti-tamper seal:** the whole vault file carries an HMAC fingerprint. If anyone edits, deletes or swaps entries or weakens the settings, HushKey refuses to open it and shows a security warning.
 - **Login throttling:** after 3 wrong master passwords, HushKey makes you wait (2s, 4s, 8s… up to 60s).
-- **Even the Client names are encrypted** on disk, and vault file names are hashed so nobody can see whose vault is whose.
+- **Even the Client names and chosen logos are encrypted** on disk, and vault file names are hashed so nobody can see whose vault is whose.
+- **Email codes** are random 6-digit numbers made by Supabase, work once, expire after 10 minutes, and only for the email they were sent to.
+- **"Remember this device"** is stored inside the sealed vault and tied to this computer. Copying the vault file to another computer, or editing the file to fake it, doesn't skip the code.
+- **Logos work offline.** They're bundled with the app, so no website ever learns which apps you have passwords for.
 
 ## File handling
 
@@ -88,10 +92,13 @@ Saving uses an **atomic write**: write to a temp file, flush it to disk, then sw
 | `cloud.py` | Talks to Supabase for email codes and recovery secrets. |
 | `cloud_config.py` | Your Supabase project's address and public key. |
 | `app.py` | The windows and screens (CustomTkinter). |
-| `test_vault.py`, `test_cloud.py` | Tests: `python -m unittest -v` |
+| `brand.py` | Draws the HushKey logo in code. |
+| `brand_icons.py` | Finds and draws app logos (Riot, Discord…) for logins. |
+| `version.py` | The app's version number. |
+| `test_*.py` | Tests: `python -m unittest -v` |
 | `supabase/setup.sql` | Database table + security rules for Supabase. |
 | `SETUP_EMAIL_RECOVERY.md` | Step-by-step guide to turn on email recovery. |
-| `assets/` | Logo and app icons. `packaging/make_icons.py` redraws them. |
+| `assets/` | App icons and the bundled app-logo list. `packaging/make_icons.py` and `packaging/make_brand_index.py` rebuild them. |
 | `packaging/` | Windows installer script and .exe version details. |
 | `.github/workflows/build.yml` | GitHub builds, tests and publishes both apps. |
 
@@ -108,7 +115,7 @@ On Mac, use `python3`. Install Python from python.org so the window library (Tki
 
 1. Upload your changed files to GitHub, **keeping them in the same folders**.
 2. On your repo page, click **Releases → Draft a new release**.
-3. Click **Choose a tag**, type the next version (e.g. `v2.0.0`), and click **Create new tag**.
+3. Click **Choose a tag**, type the next version, and click **Create new tag**. Versions count up from `v2.0.1`: small fixes go `v2.0.2`, `v2.0.3`…; new features go `v2.1.0`. The number you type is what the app shows in its corner.
 4. Click **Publish release**.
 5. Open the **Actions** tab and wait for the green check (~5–10 minutes). GitHub runs all the tests, opens every screen on a real Windows PC and a real Mac to make sure nothing crashes, then attaches the downloads. The buttons at the top of this page then serve the new version.
 
@@ -118,7 +125,12 @@ On Mac, use `python3`. Install Python from python.org so the window library (Tki
   - Windows (PowerShell): `Get-FileHash HushKey-Windows.exe`
   - Mac (Terminal): `shasum -a 256 HushKey-Mac.zip`
 - **Built in the open.** GitHub builds every download straight from the code in this repo. You can watch each build in the Actions tab.
-- **Why Windows may still warn:** SmartScreen trusts apps signed with a paid code-signing certificate and apps many people have already downloaded. New, unsigned apps get "Windows protected your PC" no matter how safe they are. The Windows build avoids common false virus alarms (standard installer, its own PyInstaller bootloader, no self-unpacking single .exe, proper version details). If Defender ever flags it, report the false positive at [microsoft.com/wdsi/filesubmission](https://www.microsoft.com/en-us/wdsi/filesubmission). Free code signing for open-source projects: [SignPath Foundation](https://signpath.org).
+- **Publisher:** the app and installer list **Erick Bardales** as publisher and copyright holder (right-click the file → Properties → Details).
+- **Why Windows may still say "Unknown publisher":** the publisher in that warning comes **only** from a code-signing certificate, a digital ID that a certificate company verifies belongs to you. Until HushKey is signed, Windows shows "Unknown publisher" no matter how safe the app is. The Windows build already avoids common false virus alarms (standard installer, its own PyInstaller bootloader, no self-unpacking single .exe, full version details). If Defender ever flags it, report the false positive at [microsoft.com/wdsi/filesubmission](https://www.microsoft.com/en-us/wdsi/filesubmission).
+
+## Credits
+
+App logos come from [Simple Icons](https://simpleicons.org) (CC0 license, see `assets/SIMPLE_ICONS_LICENSE.md`). Brand names and logos belong to their owners and are only used to label your logins. Some brands asked Simple Icons not to include their logos, so those logins show a letter instead.
 
 ## Limits (honest ones)
 
@@ -128,4 +140,5 @@ On Mac, use `python3`. Install Python from python.org so the window library (Tki
 - Someone who copies your vault file can try guessing your master password on their own computer, where the wait timer doesn't apply. A **long master password** (4+ random words) is your real protection.
 - Nothing can protect you if your computer already has malware such as a keylogger.
 - The Mac build is for Apple Silicon (M1 and newer). Intel Macs can run it from source.
-- **Upgrading from 1.0:** version 2 uses email accounts and a new vault format, so vaults made in 1.0 aren't opened. Create a new vault and re-add your logins.
+- **Upgrading from 1.0:** version 2 uses email accounts and a new vault format, so vaults made in 1.0 aren't opened. Create a new vault and re-add your logins. Vaults made in 2.0.0 keep working in 2.0.1 and later.
+- The sign-in code is an extra check on top of your master password. The encryption itself only needs the master password, so pick a strong one.

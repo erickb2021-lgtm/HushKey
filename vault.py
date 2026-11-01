@@ -29,15 +29,17 @@ HASHING vs ENCRYPTION, quickly:
 """
 
 import base64
+import getpass
 import hashlib
 import hmac
 import json
 import os
+import platform
 import secrets
 import shutil
-import string
 import sys
 import tempfile
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -201,6 +203,17 @@ def new_recovery_secret() -> bytes:
 
 def new_vault_id() -> str:
     return uuid.uuid4().hex
+
+
+REMEMBER_DAYS = 30
+
+
+def device_id() -> str:
+    """A fingerprint of this computer + user account (hashed, so it reveals
+    nothing). If the vault file is copied to another computer, the
+    fingerprint won't match and HushKey asks for an email code again."""
+    raw = f"{uuid.getnode()}|{platform.node()}|{getpass.getuser()}|{sys.platform}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
 
 
 def generate_password(length: int = 18, symbols: bool = True) -> str:
@@ -410,16 +423,39 @@ class Vault:
         except InvalidToken:
             raise TamperError("An entry failed its tamper check.")
 
-    def _encrypt_entry(self, title, username, password, entry_id=None, created=None) -> dict:
+    def _encrypt_entry(self, title, username, password, icon="", entry_id=None, created=None) -> dict:
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         return {
             "id": entry_id or uuid.uuid4().hex,
             "title": self._enc(title),
             "username": self._enc(username),
             "password": self._enc(password),
+            "icon": self._enc(icon or ""),  # even the chosen logo is encrypted
             "created": created or now,
             "updated": now,
         }
+
+    def _icon(self, e) -> str:
+        return self._dec(e["icon"]) if e.get("icon") else ""
+
+    # ---- remember this device -------------------------------------------
+
+    def is_device_remembered(self) -> bool:
+        self._require_unlocked()
+        until = self._data.get("devices", {}).get(device_id(), 0)
+        return isinstance(until, (int, float)) and until > time.time()
+
+    def remember_device(self, days: int = REMEMBER_DAYS) -> None:
+        self._require_unlocked()
+        devices = {k: v for k, v in self._data.get("devices", {}).items() if v > time.time()}
+        devices[device_id()] = int(time.time() + days * 86400)
+        self._data["devices"] = devices
+        self._save()
+
+    def forget_device(self) -> None:
+        self._require_unlocked()
+        if self._data.get("devices", {}).pop(device_id(), None) is not None:
+            self._save()
 
     def _find(self, entry_id: str) -> dict:
         for e in self._data["entries"]:
@@ -439,9 +475,14 @@ class Vault:
 
     def list_titles(self) -> list[tuple[str, str]]:
         """(id, client name) for every entry, A-Z. Usernames/passwords stay encrypted."""
+        return [(e["id"], e["title"]) for e in self.list_entries()]
+
+    def list_entries(self) -> list[dict]:
+        """{id, title, icon} for every entry, A-Z. Usernames/passwords stay encrypted."""
         self._require_unlocked()
-        rows = [(e["id"], self._dec(e["title"])) for e in self._data["entries"]]
-        return sorted(rows, key=lambda r: r[1].lower())
+        rows = [{"id": e["id"], "title": self._dec(e["title"]), "icon": self._icon(e)}
+                for e in self._data["entries"]]
+        return sorted(rows, key=lambda r: r["title"].lower())
 
     def reveal(self, entry_id: str) -> tuple[str, str]:
         """Decrypt one entry's (username, password), only when it's clicked."""
@@ -452,28 +493,28 @@ class Vault:
     def get(self, entry_id: str) -> dict:
         self._require_unlocked()
         e = self._find(entry_id)
-        return {"id": e["id"], "title": self._dec(e["title"]),
+        return {"id": e["id"], "title": self._dec(e["title"]), "icon": self._icon(e),
                 "username": self._dec(e["username"]), "password": self._dec(e["password"])}
 
-    def add(self, title: str, username: str, password: str) -> str:
+    def add(self, title: str, username: str, password: str, icon: str = "") -> str:
         self._require_unlocked()
         if not title.strip():
             raise VaultError("Client name can't be empty.")
         if not password:
             raise VaultError("Password can't be empty.")
-        entry = self._encrypt_entry(title.strip(), username.strip(), password)
+        entry = self._encrypt_entry(title.strip(), username.strip(), password, icon)
         self._data["entries"].append(entry)
         self._save()
         return entry["id"]
 
-    def update(self, entry_id: str, title: str, username: str, password: str) -> None:
+    def update(self, entry_id: str, title: str, username: str, password: str, icon: str = "") -> None:
         self._require_unlocked()
         if not title.strip():
             raise VaultError("Client name can't be empty.")
         if not password:
             raise VaultError("Password can't be empty.")
         old = self._find(entry_id)
-        new = self._encrypt_entry(title.strip(), username.strip(), password, entry_id, old.get("created"))
+        new = self._encrypt_entry(title.strip(), username.strip(), password, icon, entry_id, old.get("created"))
         self._data["entries"][self._data["entries"].index(old)] = new
         self._save()
 

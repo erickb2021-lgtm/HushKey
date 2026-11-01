@@ -1,6 +1,10 @@
-# Setting up email recovery (about 20 minutes, free)
+# Setting up emails: welcome codes, sign-in codes, and password recovery (about 20 minutes, free)
 
-HushKey uses **Supabase** (a free online service) to send the 6-digit codes and keep each vault's recovery secret. You do this setup **once**. Everyone who downloads your app then gets email recovery.
+HushKey uses **Supabase** (a free online service) to email 6-digit codes and keep each vault's recovery secret. You do this setup **once**. Everyone who downloads your app then gets:
+
+- a **welcome email** with their code when they sign up,
+- a **sign-in code** when they sign in on a computer that isn't remembered,
+- a **forgot-password code** if they forget their master password.
 
 > Until you finish this, HushKey still works. It just warns that email recovery isn't set up.
 
@@ -27,20 +31,33 @@ These rules make sure each person can only ever read their **own** recovery secr
 
 ## 3. Make the emails show a 6-digit code
 
-By default Supabase emails a clickable link. HushKey needs the **code** instead.
+By default Supabase emails a clickable link. HushKey needs a **6-digit code** instead. `{{ .Token }}` is where Supabase puts the code. It makes a new random 6-digit code every time, each code works only once, and it only works for the email it was sent to. Typing any other numbers is refused.
 
 1. Go to **Authentication** → **Emails** (sometimes called *Email Templates*).
-2. Open the **Magic Link** template and replace it with:
+2. Open the **Confirm signup** template. This is the **welcome email** new users get. Replace it with:
+   - **Subject:** `Welcome to HushKey`
+   - **Body:**
+     ```html
+     <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;background:#0E1116;color:#EEF1F6;border-radius:16px">
+       <h1 style="margin:0 0 8px"><span style="color:#3DDC97">Hush</span><span style="color:#F2C14E">Key</span></h1>
+       <p style="font-size:16px">Thank you for signing up, and here is your login code:</p>
+       <p style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#3DDC97;margin:16px 0">{{ .Token }}</p>
+       <p style="color:#A2AAB8;font-size:13px">Type this code into HushKey. It expires in 10 minutes and only works once. If you didn't sign up, you can ignore this email.</p>
+     </div>
+     ```
+   - Click **Save**.
+3. Open the **Magic Link** template. This one is used for **sign-in codes** and **forgot-password codes**. Replace it with:
    - **Subject:** `Your HushKey code`
    - **Body:**
      ```html
-     <h2>Your HushKey code</h2>
-     <p>Enter this code in HushKey:</p>
-     <p style="font-size:32px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
-     <p>It expires in 10 minutes. If you didn't ask for this, you can ignore this email. Nobody can get into your vault without your computer too.</p>
+     <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;background:#0E1116;color:#EEF1F6;border-radius:16px">
+       <h1 style="margin:0 0 8px"><span style="color:#3DDC97">Hush</span><span style="color:#F2C14E">Key</span></h1>
+       <p style="font-size:16px">Here is your HushKey code:</p>
+       <p style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#3DDC97;margin:16px 0">{{ .Token }}</p>
+       <p style="color:#A2AAB8;font-size:13px">It expires in 10 minutes and only works once. If you didn't ask for this, someone may know your email. They still can't get into your vault without your computer.</p>
+     </div>
      ```
-3. Click **Save**.
-4. Do the **same** for the **Confirm signup** template (new users get this one the first time).
+   - Click **Save**.
 
 ## 4. Set the code to expire after 10 minutes
 

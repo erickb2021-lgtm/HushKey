@@ -3,14 +3,20 @@
 ; installs per-user (no admin prompt) with a Start Menu shortcut.
 
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "2.0.1"
 #endif
 
 [Setup]
 AppId={{6E4C2B1A-3F7D-4D8E-9A51-5B2C8D0E4F17}
 AppName=HushKey
 AppVersion={#MyAppVersion}
-AppPublisher=HushKey
+AppVerName=HushKey {#MyAppVersion}
+AppPublisher=Erick Bardales
+AppCopyright=Copyright (c) 2026 Erick Bardales
+VersionInfoVersion={#MyAppVersion}
+VersionInfoCompany=Erick Bardales
+VersionInfoDescription=HushKey Password Manager Setup
+VersionInfoProductName=HushKey
 DefaultDirName={localappdata}\Programs\HushKey
 DefaultGroupName=HushKey
 DisableProgramGroupPage=yes
