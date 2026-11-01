@@ -93,6 +93,25 @@ def _register_font_file(path):
     return ctk.FontManager.load_font(path)
 
 
+def _font_file(name):
+    """Path to a font file. The fonts are built into the code (brand_data.py)
+    so they're always packed into the app; they're written once to a cache
+    folder because Windows and macOS need a real file to load a font from."""
+    import base64
+    try:
+        import brand_data
+        data = base64.b64decode("".join(brand_data.FONTS_B64[name]))
+        folder = os.path.join(tempfile.gettempdir(), "HushKey-fonts")
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, name)
+        if not os.path.isfile(path) or os.path.getsize(path) != len(data):
+            with open(path, "wb") as f:
+                f.write(data)
+        return path
+    except Exception:
+        return resource(os.path.join("assets", "fonts", name))
+
+
 def load_fonts(root):
     """Pick the app font once the window exists: Poppins if it loaded,
     otherwise a good built-in font (Avenir Next on Mac, Segoe UI on Windows)."""
@@ -103,7 +122,7 @@ def load_fonts(root):
         return
     for name in ("Poppins-Regular.ttf", "Poppins-Bold.ttf"):
         try:
-            _register_font_file(resource(os.path.join("assets", "fonts", name)))
+            _register_font_file(_font_file(name))
         except Exception:
             traceback.print_exc()
     try:

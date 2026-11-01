@@ -5,12 +5,17 @@
 <p align="center">A simple, secure password manager for <b>Windows and Mac</b>.<br>Your logins stay encrypted on your computer, and you can recover your vault by email.</p>
 
 <p align="center">
-  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.4 for Windows" src="https://img.shields.io/badge/Download_v2.0.4_for-Windows-16925A?style=for-the-badge&logo=windows&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.5 for Windows" src="https://img.shields.io/badge/Download_v2.0.5_for-Windows-16925A?style=for-the-badge&logo=windows&logoColor=white" height="44"></a>
   &nbsp;&nbsp;
-  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.4 for Mac" src="https://img.shields.io/badge/Download_v2.0.4_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.5 for Mac" src="https://img.shields.io/badge/Download_v2.0.5_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
 </p>
 
-<p align="center"><b>Latest version: v2.0.4</b> · The buttons always download the newest release · <a href="../../releases">All releases</a></p>
+<p align="center"><b>Latest version: v2.0.5</b> · The buttons always download the newest release · <a href="../../releases">All releases</a></p>
+
+## What's new in v2.0.5
+
+- **Fixed:** HushKey could crash on start with "brand_icons.json.gz not found". The app-logo list and the font are now built into the program itself, so they can never be left out of the download.
+- If logos ever fail to load, HushKey still opens normally (with its everyday icons).
 
 ## What's new in v2.0.4
 
@@ -127,7 +132,7 @@ On Mac, use `python3`. Install Python from python.org so the window library (Tki
 
 1. Upload your changed files to GitHub, **keeping them in the same folders**.
 2. On your repo page, click **Releases → Draft a new release**.
-3. Click **Choose a tag**, type the next version, and click **Create new tag**. Versions go up by one each update: `v2.0.4`, then `v2.0.5`, `v2.0.6`… The number you type is what the app shows at the bottom.
+3. Click **Choose a tag**, type the next version, and click **Create new tag**. Versions go up by one each update: `v2.0.5`, then `v2.0.6`, `v2.0.7`… The number you type is what the app shows at the bottom.
 4. Click **Publish release**.
 5. Open the **Actions** tab and wait for the green check (~5–10 minutes). GitHub runs all the tests, opens every screen on a real Windows PC and a real Mac to make sure nothing crashes, then attaches the downloads. The buttons at the top of this page then serve the new version.
 

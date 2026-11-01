@@ -111,9 +111,24 @@ def load():
     global _icons, _by_slug
     with _lock:
         if _icons is None:
-            with gzip.open(_resource(os.path.join("assets", "brand_icons.json.gz")), "rt",
-                           encoding="utf-8") as f:
-                icons = json.load(f)["icons"]
+            icons = []
+            try:
+                # 1st choice: the copy built into the code (always packed into the app)
+                import brand_data
+                raw = gzip.decompress(base64.b64decode("".join(brand_data.BRAND_ICONS_GZ_B64)
+                                                       if isinstance(brand_data.BRAND_ICONS_GZ_B64, (list, tuple))
+                                                       else brand_data.BRAND_ICONS_GZ_B64))
+                icons = json.loads(raw)["icons"]
+            except Exception:
+                try:
+                    # 2nd choice: the file in assets/ (when running from source)
+                    with gzip.open(_resource(os.path.join("assets", "brand_icons.json.gz")), "rt",
+                                   encoding="utf-8") as f:
+                        icons = json.load(f)["icons"]
+                except Exception:
+                    # never crash the app over logos: everyday icons still work
+                    import traceback
+                    traceback.print_exc()
             icons = [list(e) for e in EVERYDAY] + icons
             _by_slug = {i[0]: i for i in icons}
             _icons = icons

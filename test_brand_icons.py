@@ -10,6 +10,25 @@ class BrandIconTests(unittest.TestCase):
     def test_index_loads(self):
         self.assertGreater(brand_icons.count(), 3000)
 
+    def test_logos_load_without_the_assets_file(self):
+        """The packed app must work even if assets/ wasn't included."""
+        saved = (brand_icons._icons, brand_icons._by_slug, brand_icons._resource)
+        try:
+            brand_icons._icons = brand_icons._by_slug = None
+            brand_icons._resource = lambda rel: "/definitely/not/here/" + rel
+            self.assertGreater(brand_icons.count(), 3000)
+            self.assertIsNotNone(brand_icons.render("riotgames", 32))
+        finally:
+            brand_icons._icons, brand_icons._by_slug, brand_icons._resource = saved
+
+    def test_fonts_built_in(self):
+        import base64
+        import brand_data
+        for name in ("Poppins-Regular.ttf", "Poppins-Bold.ttf"):
+            data = base64.b64decode("".join(brand_data.FONTS_B64[name]))
+            self.assertGreater(len(data), 100_000)
+            self.assertEqual(data[:4], b"\x00\x01\x00\x00")  # a real TrueType font
+
     def test_search_riot(self):
         self.assertEqual(brand_icons.search("riot")[0], ("riotgames", "Riot Games"))
 
