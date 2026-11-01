@@ -5,12 +5,36 @@
 <p align="center">A simple, secure password manager for <b>Windows and Mac</b>.<br>Your logins stay encrypted on your computer, and you can recover your vault by email.</p>
 
 <p align="center">
-  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.6 for Windows" src="https://img.shields.io/badge/Download_v2.0.6_for-Windows-16925A?style=for-the-badge&logo=windows&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.7 for Windows" src="https://img.shields.io/badge/Download_v2.0.7_for-Windows-16925A?style=for-the-badge&logo=windows&logoColor=white" height="44"></a>
   &nbsp;&nbsp;
-  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.6 for Mac" src="https://img.shields.io/badge/Download_v2.0.6_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.7 for Mac" src="https://img.shields.io/badge/Download_v2.0.7_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
 </p>
 
-<p align="center"><b>Latest version: v2.0.6</b> · The buttons always download the newest release · <a href="../../releases">All releases</a></p>
+<p align="center"><b>Latest version: v2.0.7</b> · The buttons always download the newest release · <a href="../../releases">All releases</a></p>
+
+### 🍎 Opening HushKey on a Mac (first time only)
+
+macOS shows a warning because HushKey isn't signed with a paid Apple Developer account. It isn't saying the app has a virus. You only need to approve it once:
+
+**The normal way (macOS Sequoia and newer)**
+
+1. Move **HushKey** into your **Applications** folder (unzip `HushKey-Mac.zip` first).
+2. Double-click HushKey. When the warning appears, click **Done**. Don't click "Move to Trash".
+3. Open **System Settings → Privacy & Security**.
+4. Scroll down to the **Security** section. You'll see *"HushKey" was blocked to protect your Mac*. Click **Open Anyway**.
+5. Enter your Mac password (or use Touch ID), then click **Open Anyway** once more.
+
+After that, HushKey opens normally every time.
+
+- **Older macOS (Ventura or Sonoma):** right-click HushKey → **Open** → **Open** also works.
+- **Quick way (Terminal):** paste `xattr -dr com.apple.quarantine /Applications/HushKey.app` and press Enter.
+- **Still won't open?** The Mac version needs an Apple Silicon Mac (M1 or newer). Check  → About This Mac → "Chip: Apple M…".
+
+## What's new in v2.0.7
+
+- **Mac instructions** for the first launch are now at the top of this page.
+- **8-digit email codes:** every screen and email now matches the 8-digit codes HushKey sends.
+- **Big vaults stay fast:** logins are drawn 50 at a time (click **Show more** for the next 50), in small batches so the window never freezes, and search waits for you to stop typing. Importing hundreds of passwords from Google is smooth too.
 
 ## What's new in v2.0.6
 
@@ -41,12 +65,12 @@
 | Your computer | Download | How to open |
 |---|---|---|
 | **Windows** | `HushKey-Windows.exe` | Double-click to install (no admin needed). It opens HushKey when done and adds it to the Start Menu. To **update**, just run the newest installer: it replaces the old version and keeps your vault. If a blue "Windows protected your PC" box appears, click **More info → Run anyway** (see [why](#is-it-safe)). |
-| **Mac** (Apple Silicon, M1 or newer) | `HushKey-Mac.zip` | Unzip, drag **HushKey** into Applications. The first time, **right-click → Open → Open** (the app isn't signed with a paid Apple developer account, so macOS asks once). |
+| **Mac** (Apple Silicon, M1 or newer) | `HushKey-Mac.zip` | Unzip, drag **HushKey** into Applications. The first time, follow [Opening HushKey on a Mac](#-opening-hushkey-on-a-mac-first-time-only). |
 
 ## How to use it
 
-1. **Create a vault:** enter your email and a master password. Type the password once where you can see it, then again **hidden, from memory**. You'll get a **welcome email** with a 6-digit code to confirm the email is yours.
-2. **Sign in** with your email and master password. On a computer that isn't remembered, HushKey also emails you a **6-digit sign-in code**. Only the exact code sent to your email works. Tick **Remember this device for 30 days** to skip the code on this computer. You can undo it any time with **Forget this device** at the bottom of your vault.
+1. **Create a vault:** enter your email and a master password. Type the password once where you can see it, then again **hidden, from memory**. You'll get a **welcome email** with a 8-digit code to confirm the email is yours.
+2. **Sign in** with your email and master password. On a computer that isn't remembered, HushKey also emails you a **8-digit sign-in code**. Only the exact code sent to your email works. Tick **Remember this device for 30 days** to skip the code on this computer. You can undo it any time with **Forget this device** at the bottom of your vault.
 3. Click **+ Add login** and fill in:
    - **Client name:** type the name of the account
    - **Choose a logo for this login:** HushKey suggests one from the client name. Or click the **▾** arrow to browse the **Top 50 apps & games** and **everyday icons**, type to search 3,400+ logos (e.g. `riot`), or click **Use my own picture…**. Logos have see-through backgrounds and adjust to light and dark mode.
@@ -75,7 +99,7 @@ Exports from **Bitwarden, LastPass, 1Password, Apple Passwords, Microsoft Edge, 
 On the sign-in screen, click **Forgot master password?**
 
 1. Enter your email → **Send code**.
-2. Enter the 6-digit code from the email → **Verify code**.
+2. Enter the 8-digit code from the email → **Verify code**.
 3. Create a new master password (visible), then retype it **hidden, from memory** → **Reset password**.
 
 You can **Cancel** at any step. **Nothing changes until you click Reset password**, so if you suddenly remember your old password, it still works. All your saved logins are kept.
@@ -99,7 +123,7 @@ HushKey uses a trick called **key wrapping**:
                                    │                │
   master password ─► PBKDF2-SHA256 ┘                └─ recovery secret (online, Supabase)
   (600,000 rounds + random salt;                       only downloadable after a correct
-   part of the hash checks your login)                 6-digit code sent to YOUR email
+   part of the hash checks your login)                 8-digit code sent to YOUR email
 ```
 
 - **To open a vault you need either** your master password, **or** this computer's vault file **plus** access to your email. The online service never sees the vault file, and the vault file alone is useless.
@@ -109,7 +133,7 @@ HushKey uses a trick called **key wrapping**:
 - **Anti-tamper seal:** the whole vault file carries an HMAC fingerprint. If anyone edits, deletes or swaps entries or weakens the settings, HushKey refuses to open it and shows a security warning.
 - **Login throttling:** after 3 wrong master passwords, HushKey makes you wait (2s, 4s, 8s… up to 60s).
 - **Even the Client names and chosen logos are encrypted** on disk, and vault file names are hashed so nobody can see whose vault is whose.
-- **Email codes** are random 6-digit numbers made by Supabase, work once, expire after 10 minutes, and only for the email they were sent to.
+- **Email codes** are random 8-digit numbers made by Supabase, work once, expire after 10 minutes, and only for the email they were sent to.
 - **"Remember this device"** is stored inside the sealed vault and tied to this computer. Copying the vault file to another computer, or editing the file to fake it, doesn't skip the code.
 - **Logos work offline.** They're bundled with the app, so no website ever learns which apps you have passwords for.
 
@@ -155,7 +179,7 @@ On Mac, use `python3`. Install Python from python.org so the window library (Tki
 
 1. Upload your changed files to GitHub, **keeping them in the same folders**.
 2. On your repo page, click **Releases → Draft a new release**.
-3. Click **Choose a tag**, type the next version, and click **Create new tag**. Versions go up by one each update: `v2.0.6`, then `v2.0.7`, `v2.0.8`… The number you type is what the app shows at the bottom.
+3. Click **Choose a tag**, type the next version, and click **Create new tag**. Versions go up by one each update: `v2.0.7`, then `v2.0.8`, `v2.0.9`… The number you type is what the app shows at the bottom.
 4. Click **Publish release**.
 5. Open the **Actions** tab and wait for the green check (~5–10 minutes). GitHub runs all the tests, opens every screen on a real Windows PC and a real Mac to make sure nothing crashes, then attaches the downloads. The buttons at the top of this page then serve the new version.
 

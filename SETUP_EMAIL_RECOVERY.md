@@ -1,6 +1,6 @@
 # Setting up emails: welcome codes, sign-in codes, and password recovery (about 20 minutes, free)
 
-HushKey uses **Supabase** (a free online service) to email 6-digit codes and keep each vault's recovery secret. You do this setup **once**. Everyone who downloads your app then gets:
+HushKey uses **Supabase** (a free online service) to email 8-digit codes and keep each vault's recovery secret. You do this setup **once**. Everyone who downloads your app then gets:
 
 - a **welcome email** with their code when they sign up,
 - a **sign-in code** when they sign in on a computer that isn't remembered,
@@ -29,9 +29,9 @@ Supabase's website changes its menu names now and then. If a button isn't exactl
 
 These rules make sure each person can only ever read their **own** recovery secret, and only after entering a correct email code.
 
-## 3. Make the emails show a 6-digit code
+## 3. Make the emails show a 8-digit code
 
-By default Supabase emails a clickable link. HushKey needs a **6-digit code** instead. `{{ .Token }}` is where Supabase puts the code. It makes a new random 6-digit code every time, each code works only once, and it only works for the email it was sent to. Typing any other numbers is refused.
+By default Supabase emails a clickable link. HushKey needs a **8-digit code** instead. `{{ .Token }}` is where Supabase puts the code. It makes a new random 8-digit code every time, each code works only once, and it only works for the email it was sent to. Typing any other numbers is refused.
 
 1. Go to **Authentication** → **Emails** (sometimes called *Email Templates*).
 2. Open the **Confirm signup** template. This is the **welcome email** new users get. Replace it with:
@@ -63,7 +63,7 @@ By default Supabase emails a clickable link. HushKey needs a **6-digit code** in
 
 1. Go to **Authentication** → **Sign In / Providers** → **Email**.
 2. Make sure **Email** is turned **on**.
-3. Set **Email OTP Expiration** to `600` (seconds) and **Email OTP Length** to `6`.
+3. Set **Email OTP Expiration** to `600` (seconds) and **Email OTP Length** to `8`.
 4. Click **Save**.
 
 ## 5. Let Supabase send emails to everyone (important)

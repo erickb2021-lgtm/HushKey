@@ -218,16 +218,25 @@ def set_window_icon(win):
         traceback.print_exc()
 
 
+_brand_cache = {}
+
+
 def brand_image(slug, size):
     """An app logo for both themes (dark logos turn light in dark mode and
-    light logos turn dark in light mode, so they never disappear)."""
+    light logos turn dark in light mode, so they never disappear).
+    Cached, so 200 Riot logins share one image instead of making 200."""
     if not slug:
         return None
-    dark = brand_icons.render(slug, size * 2)
-    if dark is None:
-        return None
-    light = brand_icons.render(slug, size * 2, light=True)
-    return ctk.CTkImage(light_image=light, dark_image=dark, size=(size, size))
+    key = (slug, size)
+    if key not in _brand_cache:
+        dark = brand_icons.render(slug, size * 2)
+        if dark is None:
+            return None
+        light = brand_icons.render(slug, size * 2, light=True)
+        if len(_brand_cache) > 600:
+            _brand_cache.clear()
+        _brand_cache[key] = ctk.CTkImage(light_image=light, dark_image=dark, size=(size, size))
+    return _brand_cache[key]
 
 
 # ---- the theme switch: a key that slides between night and day ----
@@ -326,8 +335,8 @@ def field_label(parent, text):
     return ctk.CTkLabel(parent, text=text, font=font(13, "bold"), text_color=LABEL, anchor="w")
 
 
-def checkbox(parent, text, checked=True):
-    var = ctk.BooleanVar(value=checked)
+def checkbox(parent, text, checked=True, var=None):
+    var = var if var is not None else ctk.BooleanVar(value=checked)
     box = ctk.CTkCheckBox(parent, text=text, variable=var, onvalue=True, offvalue=False,
                           font=font(13), text_color=LABEL, fg_color=ACCENT, hover_color=ACCENT_HOVER,
                           border_color=BORDER, checkmark_color=ACCENT_INK, corner_radius=6)
@@ -865,7 +874,7 @@ class HushKeyApp(ctk.CTk):
         self.run_bg(lambda: self.cloud.send_code(addr),
                     lambda _: self.show_code(
                         addr, "Enter your sign-in code",
-                        "This computer isn't remembered yet, so we emailed you a 6-digit code.",
+                        "This computer isn't remembered yet, so we emailed you a 8-digit code.",
                         # a correct code also switches on email recovery for older vaults
                         on_verified=lambda s: (lambda: self._ensure_recovery(v, s)),
                         on_done=done, on_cancel=cancel, remember=True),
@@ -890,7 +899,7 @@ class HushKeyApp(ctk.CTk):
         self.run_bg(lambda: self.cloud.send_code(addr),
                     lambda _: self.show_code(
                         addr, "Turn on email recovery",
-                        "We emailed you a 6-digit code to confirm it's your email.",
+                        "We emailed you a 8-digit code to confirm it's your email.",
                         on_verified=lambda s: (lambda: self._ensure_recovery(v, s)),
                         on_done=done, on_cancel=self.show_main, done_text="Turning on…"),
                     lambda exc: self.status.configure(text=self._err_text(exc), text_color=DANGER),
@@ -959,7 +968,7 @@ class HushKeyApp(ctk.CTk):
             self.run_bg(lambda: self.cloud.send_code(addr),
                         lambda _: self.show_code(
                             addr, "Confirm your email",
-                            "We sent a welcome email with your 6-digit sign-up code.",
+                            "We sent a welcome email with your 8-digit sign-up code.",
                             on_verified=after_code, on_done=done,
                             on_cancel=self.show_create, done_text="Creating your vault…",
                             remember=True),
@@ -979,7 +988,7 @@ class HushKeyApp(ctk.CTk):
 
     def show_code(self, addr, title, intro, on_verified, on_done, on_cancel,
                   done_text="Checking…", step="", remember=False):
-        """Shared 'enter the 6-digit code' screen.
+        """Shared 'enter the 8-digit code' screen.
 
         The code is checked by the email service: it must be the exact code
         sent to this email, it works once, and it expires after 10 minutes.
@@ -991,8 +1000,8 @@ class HushKeyApp(ctk.CTk):
         self._heading(c, title, f"{intro} It was sent to {addr}. "
                                 "Check your spam folder if you don't see it.", step)
 
-        field_label(c, "6-digit code from the email").pack(fill="x", pady=(18, 0))
-        code = ctk.CTkEntry(c, placeholder_text="123456", width=FIELD_WIDTH, height=60, corner_radius=10,
+        field_label(c, "8-digit code from the email").pack(fill="x", pady=(18, 0))
+        code = ctk.CTkEntry(c, placeholder_text="12345678", width=FIELD_WIDTH, height=60, corner_radius=10,
                             fg_color=BG, border_color=BORDER, text_color=TEXT,
                             placeholder_text_color=SUBTLE, justify="center", font=font(28, "bold", mono=True))
         code.pack(fill="x", pady=(6, 6))
@@ -1068,7 +1077,7 @@ class HushKeyApp(ctk.CTk):
 
             self.run_bg(lambda: self.cloud.send_code(addr),
                         lambda _: self.show_code(
-                            addr, "Check your email", "We sent you a 6-digit code.",
+                            addr, "Check your email", "We sent you a 8-digit code.",
                             on_verified=got_secret,
                             on_done=lambda reset: self.show_forgot_new(reset, addr),
                             on_cancel=lambda: self.show_signin(), step="Step 2 of 3"),
@@ -1177,7 +1186,8 @@ class HushKeyApp(ctk.CTk):
                                    fg_color=SURFACE, border_color=BORDER, text_color=TEXT,
                                    placeholder_text_color=SUBTLE, font=font(14))
         self.search.pack(side="left", fill="x", expand=True)
-        self.search.bind("<KeyRelease>", lambda _e: self.refresh_rows())
+        self.search.bind("<KeyRelease>", self._search_typed)
+        self._search_job = None
         ghost_button(bar, "Import", self.open_import, width=92, height=44).pack(side="left", padx=(12, 0))
         ghost_button(bar, "Export", self.open_export, width=92, height=44).pack(side="left", padx=(8, 0))
         primary_button(bar, "+  Add login", self.open_add, width=140, height=44).pack(side="left", padx=(8, 0))
@@ -1203,24 +1213,66 @@ class HushKeyApp(ctk.CTk):
         self.status.configure(text="This computer will ask for an email code at the next sign-in.",
                               text_color=ACCENT)
 
+    PAGE_SIZE = 50   # logins drawn at once; "Show more" draws the next 50
+    BATCH = 10       # logins drawn per step, so the window never freezes
+
+    def _search_typed(self, _e=None):
+        """Search after a short pause in typing, not on every single key."""
+        if self._search_job is not None:
+            try:
+                self.after_cancel(self._search_job)
+            except Exception:
+                pass
+        self._search_job = self.after(180, self.refresh_rows)
+
     def refresh_rows(self, highlight=None):
         if not (self.vault and self.vault.is_unlocked):
             return
+        self._search_job = None
         self.hide_revealed()
         for w in self.listbox.winfo_children():
             w.destroy()
         self.rows = {}
+        self.more_btn = None
         n = self.vault.entry_count
         self.subtitle.configure(text=f"My vault · {self.vault.email} · {n} login{'s' if n != 1 else ''}")
         query = self.search.get().strip().lower()
         items = [e for e in self.vault.list_entries() if query in e["title"].lower()]
+        if highlight and highlight not in [e["id"] for e in items[:self.PAGE_SIZE]]:
+            # make sure a just-saved login is on the first page
+            items.sort(key=lambda e: e["id"] != highlight)
+        self._list_items = items
+        self._shown = 0
+        self._render_token = object()
         if not items:
             msg = ("No logins yet. Click “+ Add login”, or “Import” to bring them over from Google." if n == 0
                    else "No logins match your search.")
             ctk.CTkLabel(self.listbox, text=msg, font=font(14), text_color=MUTED).pack(pady=40)
             return
-        for e in items:
+        self._draw_page(highlight)
+
+    def _draw_page(self, highlight=None):
+        if self.more_btn is not None and self.more_btn.winfo_exists():
+            self.more_btn.destroy()
+        self.more_btn = None
+        end = min(self._shown + self.PAGE_SIZE, len(self._list_items))
+        self._draw_batch(self._shown, end, self._render_token, highlight)
+
+    def _draw_batch(self, start, end, token, highlight):
+        if token is not self._render_token or not self.listbox.winfo_exists():
+            return  # the list was redrawn (search, sign out) - stop
+        stop = min(start + self.BATCH, end)
+        for e in self._list_items[start:stop]:
             self._make_row(e["id"], e["title"], e["icon"])
+        self._shown = stop
+        if stop < end:
+            self.after(1, lambda: self._draw_batch(stop, end, token, highlight))
+            return
+        left = len(self._list_items) - self._shown
+        if left > 0:
+            self.more_btn = ghost_button(self.listbox, f"Show {min(left, self.PAGE_SIZE)} more  "
+                                                       f"({left} not shown)", self._draw_page, height=40)
+            self.more_btn.pack(pady=(8, 12))
         if highlight in self.rows:
             self.reveal(highlight)
 
@@ -1728,27 +1780,12 @@ class ImportDialog(Dialog):
 
         rows = ctk.CTkScrollableFrame(self.inner, height=260, fg_color=RAISED, corner_radius=12)
         rows.pack(fill="x")
-        self.vars = []
-        for item in result.items:
-            line = ctk.CTkFrame(rows, fg_color="transparent")
-            line.pack(fill="x", padx=4, pady=2)
-            box, var = checkbox(line, "", checked=item.selected)
-            box.configure(width=24, command=self._update_count)
-            box.pack(side="left")
-            img = brand_image(item.icon, 22)
-            ctk.CTkLabel(line, text="" if img else (item.title[:1] or "?").upper(), image=img, width=34,
-                         height=34, corner_radius=8, fg_color=SURFACE, text_color=ACCENT,
-                         font=font(13, "bold")).pack(side="left", padx=(2, 10))
-            names = ctk.CTkFrame(line, fg_color="transparent")
-            names.pack(side="left", fill="x", expand=True)
-            ctk.CTkLabel(names, text=item.title, font=font(13, "bold"), text_color=TEXT, anchor="w",
-                         height=18).pack(fill="x")
-            ctk.CTkLabel(names, text=item.username or "(no username)", font=font(11), text_color=MUTED,
-                         anchor="w", height=16).pack(fill="x")
-            if item.duplicate:
-                ctk.CTkLabel(line, text="Already in HushKey", font=font(11, "bold"), text_color=GOLD,
-                             fg_color=GOLD_SOFT, corner_radius=6, height=22).pack(side="right", padx=6)
-            self.vars.append((item, var))
+        # every login gets its tick box value now; the rows themselves are drawn
+        # a few at a time so a 500-login Google export doesn't freeze the window
+        self.vars = [(item, ctk.BooleanVar(value=item.selected)) for item in result.items]
+        self._review_rows = rows
+        self._review_token = object()
+        self._draw_review(0, self._review_token)
         self._update_count()
 
         note = ctk.CTkFrame(self.inner, fg_color=ACCENT_SOFT, corner_radius=12)
@@ -1793,6 +1830,32 @@ class ImportDialog(Dialog):
         self.accept_btn = self._buttons("Decline", decline, "Accept & import", accept)
         self._update_count()
         self.center()
+
+    def _draw_review(self, start, token, batch=25):
+        if token is not self._review_token or not self._review_rows.winfo_exists():
+            return
+        stop = min(start + batch, len(self.vars))
+        for item, var in self.vars[start:stop]:
+            line = ctk.CTkFrame(self._review_rows, fg_color="transparent")
+            line.pack(fill="x", padx=4, pady=2)
+            box, _ = checkbox(line, "", var=var)
+            box.configure(width=24, command=self._update_count)
+            box.pack(side="left")
+            img = brand_image(item.icon, 22)
+            ctk.CTkLabel(line, text="" if img else (item.title[:1] or "?").upper(), image=img, width=34,
+                         height=34, corner_radius=8, fg_color=SURFACE, text_color=ACCENT,
+                         font=font(13, "bold")).pack(side="left", padx=(2, 10))
+            names = ctk.CTkFrame(line, fg_color="transparent")
+            names.pack(side="left", fill="x", expand=True)
+            ctk.CTkLabel(names, text=item.title, font=font(13, "bold"), text_color=TEXT, anchor="w",
+                         height=18).pack(fill="x")
+            ctk.CTkLabel(names, text=item.username or "(no username)", font=font(11), text_color=MUTED,
+                         anchor="w", height=16).pack(fill="x")
+            if item.duplicate:
+                ctk.CTkLabel(line, text="Already in HushKey", font=font(11, "bold"), text_color=GOLD,
+                             fg_color=GOLD_SOFT, corner_radius=6, height=22).pack(side="right", padx=6)
+        if stop < len(self.vars):
+            self.after(1, lambda: self._draw_review(stop, token))
 
     def _set_all(self, value):
         for _item, var in self.vars:
