@@ -5,12 +5,21 @@
 <p align="center">A simple, secure password manager for <b>Windows and Mac</b>.<br>Your logins stay encrypted on your computer, and you can recover your vault by email.</p>
 
 <p align="center">
-  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.5 for Windows" src="https://img.shields.io/badge/Download_v2.0.5_for-Windows-16925A?style=for-the-badge&logo=windows&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.6 for Windows" src="https://img.shields.io/badge/Download_v2.0.6_for-Windows-16925A?style=for-the-badge&logo=windows&logoColor=white" height="44"></a>
   &nbsp;&nbsp;
-  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.5 for Mac" src="https://img.shields.io/badge/Download_v2.0.5_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.6 for Mac" src="https://img.shields.io/badge/Download_v2.0.6_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
 </p>
 
-<p align="center"><b>Latest version: v2.0.5</b> · The buttons always download the newest release · <a href="../../releases">All releases</a></p>
+<p align="center"><b>Latest version: v2.0.6</b> · The buttons always download the newest release · <a href="../../releases">All releases</a></p>
+
+## What's new in v2.0.6
+
+- **Import your passwords from Google** (and Bitwarden, LastPass, 1Password, Apple Passwords, Edge, Firefox or Dashlane). Click **Import**, follow the step-by-step instructions to export from Google, and choose the file.
+- **Review before anything is saved:** see every login found, with logos matched and duplicates flagged. Untick anything you don't want, then click **Accept** or **Decline**.
+- **The export file is deleted for you.** It isn't encrypted, so after you accept, HushKey overwrites it and deletes it.
+- **Export your vault:** save an **encrypted backup** (.hushkey) that only opens with your master password, or an unencrypted **CSV** for moving to another app (asks for your master password first).
+- **Restore a backup:** click Import and choose a .hushkey file.
+- Nothing is ever uploaded: imports and exports happen only on your computer.
 
 ## What's new in v2.0.5
 
@@ -46,8 +55,20 @@
 4. Usernames and passwords are **always hidden** (`••••••••••`). **Click a login** to reveal it. Click again to hide it, or it hides itself after 30 seconds.
 5. **Copy user / Copy pass** copies to your clipboard, and HushKey wipes it after 20 seconds.
 6. **Sign out** (the red button) when you're done. HushKey also signs you out after 5 minutes of no activity.
-7. **Light or dark?** Click the **key switch** at the top right: key on the moon side = dark, key on the sun side = light.
-8. The **version** you're running is always shown at the bottom of the app.
+7. **Import / Export:** click **Import** to bring passwords over from Google or another password manager (instructions included), or **Export** to save an encrypted backup or a CSV. See [Importing from Google](#importing-from-google).
+8. **Light or dark?** Click the **key switch** at the top right: key on the moon side = dark, key on the sun side = light.
+9. The **version** you're running is always shown at the bottom of the app.
+
+### Importing from Google
+
+Google doesn't let apps read your saved passwords directly, so HushKey uses Google's own export file:
+
+1. In **Chrome**, click **⋮ → Passwords and autofill → Google Password Manager → Settings → Export passwords → Download file**. (No Chrome? Go to [passwords.google.com](https://passwords.google.com) → ⚙ Settings → Export passwords.)
+2. In HushKey, click **Import → Choose the file** and pick **Google Passwords.csv** (usually in Downloads).
+3. Review the list, untick anything you don't want, and click **Accept & import**, or **Decline** to cancel with nothing changed.
+4. HushKey encrypts the logins into your vault and then **securely deletes the export file**, because anyone could read it.
+
+Exports from **Bitwarden, LastPass, 1Password, Apple Passwords, Microsoft Edge, Firefox and Dashlane** work the same way, and a **HushKey backup (.hushkey)** can be restored with your old master password.
 
 ### Forgot your master password?
 
@@ -111,6 +132,8 @@ Saving uses an **atomic write**: write to a temp file, flush it to disk, then sw
 | `app.py` | The windows and screens (CustomTkinter). |
 | `brand.py` | Draws the HushKey logo in code. |
 | `brand_icons.py` | Finds and draws app logos (Riot, Discord…) for logins. |
+| `brand_data.py` | The app-logo list and font, built into the code so they're always included. |
+| `importer.py` | Imports password exports (Google and others) and writes CSV exports. |
 | `version.py` | The app's version number. |
 | `test_*.py` | Tests: `python -m unittest -v` |
 | `supabase/setup.sql` | Database table + security rules for Supabase. |
@@ -132,7 +155,7 @@ On Mac, use `python3`. Install Python from python.org so the window library (Tki
 
 1. Upload your changed files to GitHub, **keeping them in the same folders**.
 2. On your repo page, click **Releases → Draft a new release**.
-3. Click **Choose a tag**, type the next version, and click **Create new tag**. Versions go up by one each update: `v2.0.5`, then `v2.0.6`, `v2.0.7`… The number you type is what the app shows at the bottom.
+3. Click **Choose a tag**, type the next version, and click **Create new tag**. Versions go up by one each update: `v2.0.6`, then `v2.0.7`, `v2.0.8`… The number you type is what the app shows at the bottom.
 4. Click **Publish release**.
 5. Open the **Actions** tab and wait for the green check (~5–10 minutes). GitHub runs all the tests, opens every screen on a real Windows PC and a real Mac to make sure nothing crashes, then attaches the downloads. The buttons at the top of this page then serve the new version.
 

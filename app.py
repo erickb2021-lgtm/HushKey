@@ -20,6 +20,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 import brand_icons
+import importer
 from brand import draw_logo
 from cloud import Cloud, CloudError
 from vault import (MIN_MASTER_LENGTH, REMEMBER_DAYS, Vault, VaultError,
@@ -1177,7 +1178,9 @@ class HushKeyApp(ctk.CTk):
                                    placeholder_text_color=SUBTLE, font=font(14))
         self.search.pack(side="left", fill="x", expand=True)
         self.search.bind("<KeyRelease>", lambda _e: self.refresh_rows())
-        primary_button(bar, "+  Add login", self.open_add, width=140, height=44).pack(side="left", padx=(12, 0))
+        ghost_button(bar, "Import", self.open_import, width=92, height=44).pack(side="left", padx=(12, 0))
+        ghost_button(bar, "Export", self.open_export, width=92, height=44).pack(side="left", padx=(8, 0))
+        primary_button(bar, "+  Add login", self.open_add, width=140, height=44).pack(side="left", padx=(8, 0))
 
         self.listbox = ctk.CTkScrollableFrame(wrap, fg_color="transparent", corner_radius=0)
         self.listbox.pack(fill="both", expand=True)
@@ -1212,7 +1215,7 @@ class HushKeyApp(ctk.CTk):
         query = self.search.get().strip().lower()
         items = [e for e in self.vault.list_entries() if query in e["title"].lower()]
         if not items:
-            msg = ("No logins yet. Click “+ Add login” to save your first one." if n == 0
+            msg = ("No logins yet. Click “+ Add login”, or “Import” to bring them over from Google." if n == 0
                    else "No logins match your search.")
             ctk.CTkLabel(self.listbox, text=msg, font=font(14), text_color=MUTED).pack(pady=40)
             return
@@ -1352,6 +1355,12 @@ class HushKeyApp(ctk.CTk):
 
     def open_change_master(self):
         ChangeMasterDialog(self)
+
+    def open_import(self):
+        ImportDialog(self)
+
+    def open_export(self):
+        ExportDialog(self)
 
     # ------------------------------------------------------------ sign out
 
@@ -1564,9 +1573,334 @@ class ChangeMasterDialog(Dialog):
         self.app.run_bg(lambda: vault.change_master(cur, new, again), done, fail, self.ok, "Saving…")
 
 
+class ImportDialog(Dialog):
+    """Import passwords: Google instructions -> choose the export file ->
+    review and Accept or Decline -> import and delete the file."""
+
+    def __init__(self, app):
+        super().__init__(app, "Import passwords", width=600)
+        self.vars = []
+        self.show_instructions()
+
+    def _reset(self):
+        for w in self.inner.winfo_children():
+            w.destroy()
+
+    def _title(self, title, sub=""):
+        ctk.CTkLabel(self.inner, text=title, font=font(20, "bold"), text_color=TEXT, anchor="w").pack(fill="x")
+        if sub:
+            ctk.CTkLabel(self.inner, text=sub, font=font(13), text_color=MUTED, anchor="w", justify="left",
+                         wraplength=520).pack(fill="x", pady=(4, 0))
+
+    def _error_label(self):
+        self.say = ctk.CTkLabel(self.inner, text="", font=font(13), text_color=DANGER, anchor="w",
+                                justify="left", wraplength=520)
+        self.say.pack(fill="x", pady=(8, 0))
+
+    def _buttons(self, left_text, left_cmd, right_text, right_cmd):
+        row = ctk.CTkFrame(self.inner, fg_color="transparent")
+        row.pack(fill="x", pady=(12, 0))
+        ok = primary_button(row, right_text, right_cmd, height=44)
+        ok.pack(side="right")
+        ghost_button(row, left_text, left_cmd, width=110, height=44).pack(side="right", padx=(0, 10))
+        return ok
+
+    # ---- step 1: how to get the file from Google ---------------------------
+
+    def show_instructions(self):
+        self._reset()
+        self._title("Import passwords",
+                    "Bring your passwords over from Google in about a minute. They're encrypted into "
+                    "HushKey on this computer only. Nothing is uploaded.")
+        box = ctk.CTkFrame(self.inner, fg_color=RAISED, corner_radius=12)
+        box.pack(fill="x", pady=(14, 0))
+        ctk.CTkLabel(box, text="Get your passwords from Google", font=font(15, "bold"), text_color=TEXT,
+                     anchor="w").pack(fill="x", padx=16, pady=(14, 6))
+        steps = [
+            "Open Google Chrome on this computer.",
+            "Click the ⋮ menu (top right) → Passwords and autofill → Google Password Manager.",
+            "Click Settings → Export passwords → Download file. Google may ask for your "
+            "computer's password to confirm it's you.",
+            "Come back here and click “Choose the file”. It's usually in your Downloads "
+            "folder, named “Google Passwords.csv”.",
+        ]
+        for n, text in enumerate(steps, 1):
+            line = ctk.CTkFrame(box, fg_color="transparent")
+            line.pack(fill="x", padx=16, pady=3)
+            ctk.CTkLabel(line, text=str(n), width=26, height=26, corner_radius=13, fg_color=ACCENT,
+                         text_color=ACCENT_INK, font=font(12, "bold")).pack(side="left", anchor="n")
+            ctk.CTkLabel(line, text=text, font=font(13), text_color=TEXT, anchor="w", justify="left",
+                         wraplength=440).pack(side="left", padx=(10, 0), fill="x")
+        link_button(box, "No Chrome? Open Google Password Manager in my browser",
+                    self.open_google).pack(anchor="w", padx=12, pady=(6, 12))
+        ctk.CTkLabel(self.inner, text="Coming from another app? Exports from Bitwarden, LastPass, 1Password, "
+                                      "Apple Passwords, Microsoft Edge, Firefox and Dashlane work too, and so "
+                                      "does a HushKey backup (.hushkey).",
+                     font=font(12), text_color=SUBTLE, anchor="w", justify="left",
+                     wraplength=520).pack(fill="x", pady=(10, 0))
+        self._error_label()
+        self._buttons("Cancel", self.destroy, "Choose the file…", self.choose_file)
+        self.center()
+
+    def open_google(self):
+        import webbrowser
+        webbrowser.open("https://passwords.google.com")
+        self.say.configure(text="Opened passwords.google.com. Click the ⚙ Settings icon → Export passwords "
+                                "→ Export, then come back here.", text_color=ACCENT)
+
+    def choose_file(self):
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            parent=self, title="Choose your password export",
+            filetypes=[("Password exports", "*.csv *.hushkey"), ("All files", "*.*")])
+        if not path:
+            return
+        if path.lower().endswith(".hushkey"):
+            return self.show_backup_password(path)
+        try:
+            result = importer.read_csv_file(path, self.app.vault.existing_keys())
+        except importer.ImportError_ as exc:
+            return self.say.configure(text=str(exc), text_color=DANGER)
+        except OSError:
+            return self.say.configure(text="HushKey couldn't open that file.", text_color=DANGER)
+        self.show_review(path, result)
+
+    # ---- step 1b: a HushKey backup needs its master password -----------------
+
+    def show_backup_password(self, path):
+        self._reset()
+        self._title("Open your HushKey backup",
+                    f"“{os.path.basename(path)}” is encrypted. Type the master password you had when "
+                    "you made this backup.")
+        pw = PasswordField(self.inner, "Backup's master password", width=FIELD_WIDTH + 140)
+        pw.pack(fill="x", pady=(14, 0))
+        self._error_label()
+
+        def open_it(_e=None):
+            typed = pw.get()
+
+            def work():
+                b = Vault.open_backup(path, typed)
+                try:
+                    entries = b.all_entries()
+                finally:
+                    b.lock()
+                existing = {(t.lower(), u.lower()) for t, u in self.app.vault.existing_keys()}
+                items = []
+                for e in entries:
+                    dup = (e["title"].lower(), e["username"].lower()) in existing
+                    items.append(importer.Item(title=e["title"], username=e["username"],
+                                               password=e["password"], url=e.get("url", ""),
+                                               icon=e.get("icon", ""), duplicate=dup, selected=not dup))
+                return importer.ImportResult(source="HushKey backup", items=items)
+
+            def fail(exc):
+                if self.winfo_exists():
+                    self.say.configure(text=self.app._err_text(exc), text_color=DANGER)
+
+            self.app.run_bg(work, lambda res: self.winfo_exists() and self.show_review(path, res, backup=True),
+                            fail, ok, "Opening…")
+
+        ok = self._buttons("Back", self.show_instructions, "Open backup", open_it)
+        pw.bind_enter(open_it)
+        pw.focus()
+        self.center()
+
+    # ---- step 2: review, then Accept or Decline ------------------------------
+
+    def show_review(self, path, result, backup=False):
+        self._reset()
+        n = len(result.items)
+        dups = sum(1 for i in result.items if i.duplicate)
+        sub = f"Found {n} login{'s' if n != 1 else ''} in “{os.path.basename(path)}” ({result.source})."
+        if dups:
+            sub += f" {dups} already {'is' if dups == 1 else 'are'} in HushKey and won't be added twice."
+        if result.skipped:
+            sub += f" {result.skipped} item{'s' if result.skipped != 1 else ''} without a password were skipped."
+        self._title("Review before importing", sub)
+
+        bar = ctk.CTkFrame(self.inner, fg_color="transparent")
+        bar.pack(fill="x", pady=(10, 4))
+        self.count = ctk.CTkLabel(bar, text="", font=font(12, "bold"), text_color=MUTED)
+        self.count.pack(side="left")
+        link_button(bar, "Select none", lambda: self._set_all(False), size=12).pack(side="right")
+        link_button(bar, "Select all", lambda: self._set_all(True), size=12).pack(side="right", padx=(0, 8))
+
+        rows = ctk.CTkScrollableFrame(self.inner, height=260, fg_color=RAISED, corner_radius=12)
+        rows.pack(fill="x")
+        self.vars = []
+        for item in result.items:
+            line = ctk.CTkFrame(rows, fg_color="transparent")
+            line.pack(fill="x", padx=4, pady=2)
+            box, var = checkbox(line, "", checked=item.selected)
+            box.configure(width=24, command=self._update_count)
+            box.pack(side="left")
+            img = brand_image(item.icon, 22)
+            ctk.CTkLabel(line, text="" if img else (item.title[:1] or "?").upper(), image=img, width=34,
+                         height=34, corner_radius=8, fg_color=SURFACE, text_color=ACCENT,
+                         font=font(13, "bold")).pack(side="left", padx=(2, 10))
+            names = ctk.CTkFrame(line, fg_color="transparent")
+            names.pack(side="left", fill="x", expand=True)
+            ctk.CTkLabel(names, text=item.title, font=font(13, "bold"), text_color=TEXT, anchor="w",
+                         height=18).pack(fill="x")
+            ctk.CTkLabel(names, text=item.username or "(no username)", font=font(11), text_color=MUTED,
+                         anchor="w", height=16).pack(fill="x")
+            if item.duplicate:
+                ctk.CTkLabel(line, text="Already in HushKey", font=font(11, "bold"), text_color=GOLD,
+                             fg_color=GOLD_SOFT, corner_radius=6, height=22).pack(side="right", padx=6)
+            self.vars.append((item, var))
+        self._update_count()
+
+        note = ctk.CTkFrame(self.inner, fg_color=ACCENT_SOFT, corner_radius=12)
+        note.pack(fill="x", pady=(10, 0))
+        ctk.CTkLabel(note, text="When you click Accept, the selected logins are encrypted into your vault on "
+                                "this computer. Nothing is uploaded, and passwords stay hidden until you "
+                                "click them.", font=font(12), text_color=TEXT, anchor="w", justify="left",
+                     wraplength=500).pack(fill="x", padx=14, pady=10)
+        self.delete_var = None
+        if not backup:
+            box, self.delete_var = checkbox(
+                self.inner, f"Delete “{os.path.basename(path)}” after importing "
+                            "(recommended: it isn't encrypted)", checked=True)
+            box.pack(fill="x", pady=(10, 0))
+        self._error_label()
+
+        def accept():
+            chosen = [it for it, var in self.vars if var.get()]
+            if not chosen:
+                return self.say.configure(text="Tick at least one login, or click Decline.", text_color=DANGER)
+            try:
+                added = self.app.vault.add_many([it.__dict__ for it in chosen])
+            except VaultError as exc:
+                return self.say.configure(text=str(exc), text_color=DANGER)
+            msg = f"Imported {added} login{'s' if added != 1 else ''}."
+            if self.delete_var is not None and self.delete_var.get():
+                if importer.secure_delete(path):
+                    msg += f" “{os.path.basename(path)}” was securely deleted."
+                else:
+                    msg += f" Couldn't delete “{os.path.basename(path)}”: please delete it yourself."
+            self.app.refresh_rows()
+            self.app.status.configure(text=msg, text_color=ACCENT)
+            self.destroy()
+
+        def decline():
+            if not backup:
+                self.app.status.configure(
+                    text="Import cancelled, nothing was added. Your export file wasn't touched: "
+                         "delete it when you're done, since it isn't encrypted.", text_color=MUTED)
+            self.destroy()
+
+        self.accept_btn = self._buttons("Decline", decline, "Accept & import", accept)
+        self._update_count()
+        self.center()
+
+    def _set_all(self, value):
+        for _item, var in self.vars:
+            var.set(value)
+        self._update_count()
+
+    def _update_count(self):
+        picked = sum(1 for _i, v in self.vars if v.get())
+        if getattr(self, "count", None) is not None and self.count.winfo_exists():
+            self.count.configure(text=f"{picked} of {len(self.vars)} selected")
+        if getattr(self, "accept_btn", None) is not None and self.accept_btn.winfo_exists():
+            self.accept_btn.configure(text=f"Accept & import {picked}")
+
+
+class ExportDialog(Dialog):
+    """Export: an encrypted backup (recommended) or a plain CSV for moving to
+    another password manager (asks for the master password first)."""
+
+    def __init__(self, app):
+        super().__init__(app, "Export your vault", width=560)
+        c = self.inner
+        ctk.CTkLabel(c, text="Export your vault", font=font(20, "bold"), text_color=TEXT, anchor="w").pack(fill="x")
+
+        a = ctk.CTkFrame(c, fg_color=ACCENT_SOFT, corner_radius=12, border_width=1, border_color=ACCENT)
+        a.pack(fill="x", pady=(14, 0))
+        ctk.CTkLabel(a, text="Encrypted backup (.hushkey)  ·  recommended", font=font(14, "bold"),
+                     text_color=ACCENT, anchor="w").pack(fill="x", padx=16, pady=(12, 2))
+        ctk.CTkLabel(a, text="A locked copy of your whole vault. Safe to keep on a USB drive or in cloud "
+                             "storage: it only opens with your master password. To restore it, click "
+                             "Import and choose the file.", font=font(12), text_color=TEXT, anchor="w",
+                     justify="left", wraplength=470).pack(fill="x", padx=16)
+        primary_button(a, "Save encrypted backup…", self.save_backup, height=40).pack(anchor="w", padx=16, pady=12)
+
+        b = ctk.CTkFrame(c, fg_color=DANGER_SOFT, corner_radius=12, border_width=1, border_color=DANGER_BORDER)
+        b.pack(fill="x", pady=(12, 0))
+        ctk.CTkLabel(b, text="Spreadsheet (.csv)  ·  NOT encrypted", font=font(14, "bold"),
+                     text_color=DANGER, anchor="w").pack(fill="x", padx=16, pady=(12, 2))
+        ctk.CTkLabel(b, text="Only for moving to another password manager. Anyone who opens this file can "
+                             "read every password, so delete it right after you've imported it.",
+                     font=font(12), text_color=TEXT, anchor="w", justify="left",
+                     wraplength=470).pack(fill="x", padx=16)
+        self.pw = PasswordField(b, "Type your master password to confirm", width=FIELD_WIDTH + 40)
+        self.pw.pack(fill="x", padx=16, pady=(10, 0))
+        ctk.CTkButton(b, text="Save unencrypted CSV…", command=self.save_csv, height=40, corner_radius=10,
+                      fg_color="transparent", hover_color=DANGER_SOFT, border_width=1, border_color=DANGER,
+                      text_color=DANGER, font=font(14, "bold")).pack(anchor="w", padx=16, pady=12)
+
+        self.say = ctk.CTkLabel(c, text="", font=font(13), text_color=DANGER, anchor="w", justify="left",
+                                wraplength=500)
+        self.say.pack(fill="x", pady=(10, 0))
+        row = ctk.CTkFrame(c, fg_color="transparent")
+        row.pack(fill="x", pady=(8, 0))
+        ghost_button(row, "Close", self.destroy, width=100, height=44).pack(side="right")
+        self.center()
+
+    def save_backup(self):
+        from datetime import date
+        from tkinter import filedialog
+        path = filedialog.asksaveasfilename(
+            parent=self, title="Save encrypted backup", defaultextension=".hushkey",
+            initialfile=f"HushKey backup {date.today().isoformat()}.hushkey",
+            filetypes=[("HushKey backup", "*.hushkey")])
+        if not path:
+            return
+        try:
+            self.app.vault.export_backup(path)
+        except (OSError, VaultError) as exc:
+            return self.say.configure(text=f"Couldn't save the backup: {exc}", text_color=DANGER)
+        self.say.configure(text=f"Encrypted backup saved: {os.path.basename(path)}", text_color=ACCENT)
+
+    def save_csv(self):
+        from tkinter import filedialog
+        if not self.app.vault.check_master(self.pw.get()):
+            self.pw.set("")
+            return self.say.configure(text="That's not your master password.", text_color=DANGER)
+        path = filedialog.asksaveasfilename(
+            parent=self, title="Save unencrypted CSV", defaultextension=".csv",
+            initialfile="HushKey passwords.csv", filetypes=[("CSV spreadsheet", "*.csv")])
+        if not path:
+            return
+        try:
+            importer.write_csv(path, self.app.vault.all_entries())
+        except (OSError, VaultError) as exc:
+            return self.say.configure(text=f"Couldn't save the file: {exc}", text_color=DANGER)
+        self.pw.set("")
+        self.say.configure(text=f"Saved {os.path.basename(path)}. Delete it as soon as you've imported it "
+                                "into the other app.", text_color=GOLD)
+
+
 # ==========================================================================
 # Self-test: open every screen on a real machine, then close (used by GitHub)
 # ==========================================================================
+
+def _selftest_import(app, tmp, require):
+    """Import a small Google-style file through the real review screen."""
+    path = os.path.join(tmp, "Google Passwords.csv")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("name,url,username,password,note\n"
+                "discord.com,https://discord.com/login,erick,disc-pw,\n"
+                "netflix.com,https://www.netflix.com,erick@x.com,nflx-pw,\n")
+    dlg = [w for w in app.winfo_children() if isinstance(w, ImportDialog)][0]
+    before = app.vault.entry_count
+    dlg.show_review(path, importer.read_csv_file(path, app.vault.existing_keys()))
+    require(len(dlg.vars) == 2, "review lists both logins")
+    dlg.accept_btn.invoke()
+    require(app.vault.entry_count == before + 2, "accept imports them")
+    require(not os.path.exists(path), "export file deleted after accept")
+
 
 def selftest() -> int:
     failures = []
@@ -1620,6 +1954,11 @@ def selftest() -> int:
         lambda: dialog().logo.choose("riotgames"),
         lambda: [w.destroy() for w in app.winfo_children() if isinstance(w, ctk.CTkToplevel)],
         lambda: app.open_edit(app.vault.list_titles()[0][0]),
+        lambda: [w.destroy() for w in app.winfo_children() if isinstance(w, ctk.CTkToplevel)],
+        lambda: app.open_import(),
+        lambda: require([w for w in app.winfo_children() if isinstance(w, ImportDialog)], "import opens"),
+        lambda: _selftest_import(app, tmp, require),
+        lambda: app.open_export(),
         lambda: [w.destroy() for w in app.winfo_children() if isinstance(w, ctk.CTkToplevel)],
         lambda: app.open_change_master(),
         lambda: app.sign_out(),

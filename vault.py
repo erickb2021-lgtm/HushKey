@@ -436,9 +436,10 @@ class Vault:
         except InvalidToken:
             raise TamperError("An entry failed its tamper check.")
 
-    def _encrypt_entry(self, title, username, password, icon="", entry_id=None, created=None) -> dict:
+    def _encrypt_entry(self, title, username, password, icon="", entry_id=None, created=None,
+                       url="") -> dict:
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        return {
+        entry = {
             "id": entry_id or uuid.uuid4().hex,
             "title": self._enc(title),
             "username": self._enc(username),
@@ -447,6 +448,12 @@ class Vault:
             "created": created or now,
             "updated": now,
         }
+        if url:
+            entry["url"] = self._enc(url)   # website address, kept from imports
+        return entry
+
+    def _url(self, e) -> str:
+        return self._dec(e["url"]) if e.get("url") else ""
 
     def _icon(self, e) -> str:
         return self._dec(e["icon"]) if e.get("icon") else ""
@@ -507,7 +514,8 @@ class Vault:
         self._require_unlocked()
         e = self._find(entry_id)
         return {"id": e["id"], "title": self._dec(e["title"]), "icon": self._icon(e),
-                "username": self._dec(e["username"]), "password": self._dec(e["password"])}
+                "username": self._dec(e["username"]), "password": self._dec(e["password"]),
+                "url": self._url(e)}
 
     def add(self, title: str, username: str, password: str, icon: str = "") -> str:
         self._require_unlocked()
@@ -527,7 +535,8 @@ class Vault:
         if not password:
             raise VaultError("Password can't be empty.")
         old = self._find(entry_id)
-        new = self._encrypt_entry(title.strip(), username.strip(), password, icon, entry_id, old.get("created"))
+        new = self._encrypt_entry(title.strip(), username.strip(), password, icon, entry_id,
+                                  old.get("created"), url=self._url(old))
         self._data["entries"][self._data["entries"].index(old)] = new
         self._save()
 
@@ -540,6 +549,65 @@ class Vault:
     def entry_count(self) -> int:
         self._require_unlocked()
         return len(self._data["entries"])
+
+    # ---- import / export ----------------------------------------------------
+
+    def add_many(self, items) -> int:
+        """Add many logins at once (an import) with a single save.
+        items: dicts with title, username, password and optional icon, url."""
+        self._require_unlocked()
+        added = 0
+        for it in items:
+            title, password = (it.get("title") or "").strip(), it.get("password") or ""
+            if not title or not password:
+                continue
+            self._data["entries"].append(self._encrypt_entry(
+                title[:120], (it.get("username") or "").strip(), password,
+                it.get("icon") or "", url=(it.get("url") or "")[:500]))
+            added += 1
+        if added:
+            self._save()
+        return added
+
+    def existing_keys(self) -> list:
+        """(client name, username) of every login, to spot duplicates on import."""
+        self._require_unlocked()
+        return [(self._dec(e["title"]), self._dec(e["username"])) for e in self._data["entries"]]
+
+    def all_entries(self) -> list:
+        """Every login fully decrypted - only used to export."""
+        self._require_unlocked()
+        return [self.get(e["id"]) for e in self._data["entries"]]
+
+    def check_master(self, master: str) -> bool:
+        """Is this the master password? (Asked again before risky actions.)"""
+        self._require_unlocked()
+        kdf = self._data["kdf"]
+        verifier, _ = derive_master_keys(master, _b64d(kdf["salt"]), int(kdf["iterations"]))
+        return hmac.compare_digest(verifier, _b64d(self._data["verifier"]))
+
+    def export_backup(self, dest: str) -> None:
+        """Save an encrypted copy of the vault (.hushkey). It's the same sealed,
+        encrypted file HushKey keeps, so it's only readable with the master
+        password that was in use when the backup was made."""
+        self._require_unlocked()
+        _atomic_write_json(dest, self._data)
+
+    @classmethod
+    def open_backup(cls, path: str, master: str) -> "Vault":
+        """Unlock a .hushkey backup file to import its logins."""
+        v = cls("backup@hushkey.local", os.path.dirname(os.path.abspath(path)))
+        v.path = path
+        try:
+            v.unlock(master)
+        except WrongPassword:
+            raise WrongPassword("That's not the master password for this backup. Use the master "
+                                "password you had when the backup was made.")
+        except TamperError:
+            raise
+        except VaultError:
+            raise VaultError("That file isn't a HushKey backup, or it's damaged.")
+        return v
 
 
 class RecoveryReset:
