@@ -6,6 +6,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt pyinstaller
 python -m unittest
-pyinstaller --noconfirm --windowed --name HushKey --osx-bundle-identifier com.hushkey.app app.py
+python app.py --selftest
+pyinstaller --noconfirm --clean --windowed --name HushKey \
+  --icon assets/HushKey.icns --add-data "assets:assets" \
+  --collect-data customtkinter \
+  --osx-bundle-identifier com.hushkey.app app.py
 echo ""
 echo "Done! Your app is at: dist/HushKey.app  (drag it into Applications)"

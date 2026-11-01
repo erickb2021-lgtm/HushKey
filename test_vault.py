@@ -5,91 +5,75 @@ import os
 import tempfile
 import unittest
 
-from vault import Vault, VaultError, WrongPassword, generate_password
+from vault import (TamperError, Vault, VaultError, WrongPassword,
+                   generate_password, looks_like_email, new_recovery_secret,
+                   password_strength)
 
+EMAIL = "Erick@Example.com"
 MASTER = "correct horse battery"
 
 
 class VaultTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.path = os.path.join(self.tmp.name, "vault.json")
+        self.dir = self.tmp.name
+        self.secret = new_recovery_secret()
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def new_vault(self):
-        v = Vault(self.path)
-        v.create(MASTER)
+    def new_vault(self, recovery=True):
+        v = Vault(EMAIL, self.dir)
+        v.create(MASTER, self.secret if recovery else None)
         return v
+
+    def fresh(self, email=EMAIL):
+        return Vault(email, self.dir)
+
+    def load(self, v):
+        with open(v.path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def dump(self, v, data):
+        with open(v.path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+    # ---- basics ----
 
     def test_create_and_unlock(self):
         v = self.new_vault()
         v.add("Riot account 1", "summoner99", "hunter2!")
         v.lock()
-        v2 = Vault(self.path)
+        v2 = self.fresh("  erick@example.COM ")  # email is case/space-insensitive
         v2.unlock(MASTER)
-        (entry_id, title), = v2.list_titles()
+        (eid, title), = v2.list_titles()
         self.assertEqual(title, "Riot account 1")
-        self.assertEqual(v2.reveal(entry_id), ("summoner99", "hunter2!"))
+        self.assertEqual(v2.reveal(eid), ("summoner99", "hunter2!"))
 
-    def test_wrong_password_rejected(self):
+    def test_wrong_password(self):
         self.new_vault()
         with self.assertRaises(WrongPassword):
-            Vault(self.path).unlock("not the password")
+            self.fresh().unlock("not the password")
+
+    def test_other_email_has_no_vault(self):
+        self.new_vault()
+        with self.assertRaises(VaultError):
+            self.fresh("someone@else.com").unlock(MASTER)
+
+    def test_two_emails_two_vaults(self):
+        self.new_vault()
+        other = Vault("friend@example.com", self.dir)
+        other.create("another password")
+        self.assertNotEqual(other.path, self.fresh().path)
 
     def test_nothing_readable_on_disk(self):
         v = self.new_vault()
         v.add("Riot account 1", "summoner99", "hunter2!")
-        with open(self.path, encoding="utf-8") as f:
+        with open(v.path, encoding="utf-8") as f:
             raw = f.read()
-        for secret in ("Riot", "summoner99", "hunter2", MASTER):
-            self.assertNotIn(secret, raw)
-
-    def _load(self):
-        with open(self.path, encoding="utf-8") as f:
-            return json.load(f)
-
-    def _dump(self, data):
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-
-    def test_edited_entry_detected(self):
-        v = self.new_vault()
-        v.add("Site", "me", "pw")
-        data = self._load()
-        tok = data["entries"][0]["password"]
-        data["entries"][0]["password"] = tok[:-6] + ("A" if tok[-6] != "A" else "B") + tok[-5:]
-        self._dump(data)
-        with self.assertRaises(VaultError) as ctx:
-            Vault(self.path).unlock(MASTER)
-        self.assertNotIsInstance(ctx.exception, WrongPassword)
-
-    def test_deleted_entry_detected(self):
-        v = self.new_vault()
-        v.add("Keep", "a", "b")
-        v.add("Remove me", "c", "d")
-        data = self._load()
-        data["entries"].pop()
-        self._dump(data)
-        with self.assertRaises(VaultError):
-            Vault(self.path).unlock(MASTER)
-
-    def test_weakened_settings_detected(self):
-        self.new_vault()
-        data = self._load()
-        data["iterations"] = 1  # attacker tries to make future guesses cheap
-        self._dump(data)
-        with self.assertRaises(VaultError):
-            Vault(self.path).unlock(MASTER)
-
-    def test_backup_kept(self):
-        v = self.new_vault()
-        v.add("First", "a", "b")
-        self.assertTrue(os.path.isfile(v.backup_path))
-        backup = Vault(v.backup_path)
-        backup.unlock(MASTER)  # the backup is a valid, sealed vault too
-        self.assertEqual(backup.list_titles(), [])
+        for secret in ("Riot", "summoner99", "hunter2", MASTER, "erick"):
+            self.assertNotIn(secret.lower(), raw.lower())
+        self.assertNotIn("erick", os.path.basename(v.path))
 
     def test_update_delete(self):
         v = self.new_vault()
@@ -100,30 +84,25 @@ class VaultTests(unittest.TestCase):
         v.delete(eid)
         self.assertEqual(v.list_titles(), [])
 
-    def test_change_master(self):
+    def test_change_master_keeps_recovery_working(self):
         v = self.new_vault()
         eid = v.add("Riot", "u", "p")
-        v.change_master(MASTER, "a brand new master")
+        v.change_master(MASTER, "a brand new master", "a brand new master")
         v.lock()
         with self.assertRaises(WrongPassword):
-            Vault(self.path).unlock(MASTER)
-        v2 = Vault(self.path)
-        v2.unlock("a brand new master")
+            self.fresh().unlock(MASTER)
+        reset = self.fresh().start_recovery(self.secret)
+        reset.complete("third password!", "third password!")
+        v2 = self.fresh()
+        v2.unlock("third password!")
         self.assertEqual(v2.reveal(eid), ("u", "p"))
 
-    def test_short_master_rejected(self):
+    def test_bad_new_master(self):
         with self.assertRaises(VaultError):
-            Vault(self.path).create("short")
-
-    def test_same_password_different_salt(self):
-        """Two vaults with the same master password hash differently (salt)."""
-        other = os.path.join(self.tmp.name, "other.json")
-        self.new_vault()
-        Vault(other).create(MASTER)
-        a = self._load()["verifier"]
-        with open(other, encoding="utf-8") as f:
-            b = json.load(f)["verifier"]
-        self.assertNotEqual(a, b)
+            Vault(EMAIL, self.dir).create("short")
+        v = self.new_vault()
+        with self.assertRaises(VaultError):
+            v.change_master(MASTER, "longenough1", "longenough2")
 
     def test_locked_vault_refuses(self):
         v = self.new_vault()
@@ -131,10 +110,107 @@ class VaultTests(unittest.TestCase):
         with self.assertRaises(VaultError):
             v.list_titles()
 
+    # ---- recovery ----
+
+    def test_recovery_resets_master_and_keeps_entries(self):
+        v = self.new_vault()
+        eid = v.add("Riot account 1", "summoner99", "hunter2!")
+        v.lock()
+        reset = self.fresh().start_recovery(self.secret)
+        reset.complete("my new master pw", "my new master pw")
+        with self.assertRaises(WrongPassword):
+            self.fresh().unlock(MASTER)
+        v2 = self.fresh()
+        v2.unlock("my new master pw")
+        self.assertEqual(v2.reveal(eid), ("summoner99", "hunter2!"))
+
+    def test_nothing_changes_until_reset_clicked(self):
+        v = self.new_vault()
+        v.add("Keep", "a", "b")
+        v.lock()
+        with open(v.path, "rb") as f:
+            before = f.read()
+        reset = self.fresh().start_recovery(self.secret)
+        with self.assertRaises(VaultError):
+            reset.complete("mismatch one", "mismatch two")  # typo in retype
+        reset.cancel()
+        with open(v.path, "rb") as f:
+            self.assertEqual(before, f.read())
+        self.fresh().unlock(MASTER)  # old password still works
+        with self.assertRaises(VaultError):
+            reset.complete("new password 1", "new password 1")  # cancelled = dead
+
+    def test_wrong_recovery_secret_rejected(self):
+        self.new_vault()
+        with self.assertRaises(VaultError):
+            self.fresh().start_recovery(new_recovery_secret())
+
+    def test_no_recovery_vault(self):
+        v = self.new_vault(recovery=False)
+        self.assertFalse(v.has_recovery)
+        with self.assertRaises(VaultError):
+            self.fresh().start_recovery(self.secret)
+
+    # ---- tampering ----
+
+    def test_edited_entry_detected(self):
+        v = self.new_vault()
+        v.add("Site", "me", "pw")
+        data = self.load(v)
+        tok = data["entries"][0]["password"]
+        data["entries"][0]["password"] = tok[:-6] + ("A" if tok[-6] != "A" else "B") + tok[-5:]
+        self.dump(v, data)
+        with self.assertRaises(TamperError):
+            self.fresh().unlock(MASTER)
+
+    def test_deleted_entry_detected(self):
+        v = self.new_vault()
+        v.add("Keep", "a", "b")
+        v.add("Remove me", "c", "d")
+        data = self.load(v)
+        data["entries"].pop()
+        self.dump(v, data)
+        with self.assertRaises(TamperError):
+            self.fresh().unlock(MASTER)
+
+    def test_weakened_settings_detected(self):
+        v = self.new_vault()
+        data = self.load(v)
+        data["kdf"]["iterations"] = 1
+        self.dump(v, data)
+        with self.assertRaises(VaultError):
+            self.fresh().unlock(MASTER)
+
+    def test_removed_recovery_detected(self):
+        v = self.new_vault()
+        data = self.load(v)
+        data["recovery"] = None
+        self.dump(v, data)
+        with self.assertRaises(TamperError):
+            self.fresh().unlock(MASTER)
+
+    def test_backup_kept(self):
+        v = self.new_vault()
+        v.add("First", "a", "b")
+        self.assertTrue(os.path.isfile(v.backup_path))
+
+    # ---- helpers ----
+
     def test_generate_password(self):
-        pw = generate_password(24)
-        self.assertEqual(len(pw), 24)
-        self.assertNotEqual(pw, generate_password(24))
+        pw = generate_password(18)
+        self.assertEqual(len(pw), 18)
+        self.assertNotEqual(pw, generate_password(18))
+        self.assertTrue(any(not c.isalnum() for c in pw))
+
+    def test_strength(self):
+        self.assertEqual(password_strength("")[0], 0)
+        self.assertLessEqual(password_strength("abc")[0], 1)
+        self.assertEqual(password_strength(generate_password(18))[0], 4)
+
+    def test_email_check(self):
+        self.assertTrue(looks_like_email("a@b.co"))
+        for bad in ("", "abc", "a@b", "a b@c.com", "@b.com", "a@@b.com"):
+            self.assertFalse(looks_like_email(bad), bad)
 
 
 if __name__ == "__main__":

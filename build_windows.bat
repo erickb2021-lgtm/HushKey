@@ -7,8 +7,9 @@ python -m venv .venv
 call .venv\Scripts\activate.bat
 pip install -r requirements.txt pyinstaller
 python -m unittest || goto :error
+python app.py --selftest || goto :error
 python packaging\make_version_info.py 1.0.0 || goto :error
-pyinstaller --noconfirm --clean --windowed --noupx --name HushKey --version-file packaging\version_info.txt app.py || goto :error
+pyinstaller --noconfirm --clean --windowed --noupx --name HushKey --icon assets\HushKey.ico --add-data "assets:assets" --collect-data customtkinter --version-file packaging\version_info.txt app.py || goto :error
 echo.
 echo Done! Your app is at: dist\HushKey\HushKey.exe
 pause

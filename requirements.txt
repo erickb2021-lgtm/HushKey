@@ -1,1 +1,4 @@
 cryptography>=42
+customtkinter>=5.2
+certifi>=2024.2.2
+pillow>=10.0
