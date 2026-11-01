@@ -1,0 +1,76 @@
+# Builds HushKey for Windows and Mac on GitHub's own computers.
+#
+# - Every push to main: builds both apps and attaches them to the workflow run
+#   (Actions tab -> latest run -> "Artifacts" at the bottom).
+# - Pushing a tag like v1.0.0: also creates a GitHub Release with
+#   "HushKey-Windows.exe" and "HushKey-Mac.zip" as the download buttons.
+# - You can also start it by hand from the Actions tab ("Run workflow").
+
+name: Build HushKey
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows
+          - os: macos-latest
+            label: Mac
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Run tests
+        run: python -m unittest -v
+
+      - name: Build Windows app
+        if: matrix.label == 'Windows'
+        run: |
+          pyinstaller --noconfirm --onefile --windowed --name HushKey app.py
+          move dist\HushKey.exe dist\HushKey-Windows.exe
+        shell: cmd
+
+      - name: Build Mac app
+        if: matrix.label == 'Mac'
+        run: |
+          pyinstaller --noconfirm --windowed --name HushKey \
+            --osx-bundle-identifier com.hushkey.app app.py
+          cd dist && ditto -c -k --keepParent HushKey.app HushKey-Mac.zip
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: HushKey-${{ matrix.label }}
+          path: |
+            dist/HushKey-Windows.exe
+            dist/HushKey-Mac.zip
+          if-no-files-found: ignore
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/HushKey-Windows.exe
+            dist/HushKey-Mac.zip
+          fail_on_unmatched_files: false
