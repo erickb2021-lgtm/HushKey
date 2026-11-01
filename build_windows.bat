@@ -1,13 +1,16 @@
 @echo off
-REM Build HushKey.exe on Windows.   Double-click this file, or run: build_windows.bat
+REM Build HushKey on Windows.   Double-click this file, or run: build_windows.bat
+REM Result: dist\HushKey\HushKey.exe  (keep the whole HushKey folder together)
+REM The installer (HushKey-Windows.exe) is built by GitHub; see the README.
 cd /d "%~dp0"
 python -m venv .venv
 call .venv\Scripts\activate.bat
 pip install -r requirements.txt pyinstaller
 python -m unittest || goto :error
-pyinstaller --noconfirm --onefile --windowed --name HushKey app.py || goto :error
+python packaging\make_version_info.py 1.0.0 || goto :error
+pyinstaller --noconfirm --clean --windowed --noupx --name HushKey --version-file packaging\version_info.txt app.py || goto :error
 echo.
-echo Done! Your app is at: dist\HushKey.exe
+echo Done! Your app is at: dist\HushKey\HushKey.exe
 pause
 exit /b 0
 :error

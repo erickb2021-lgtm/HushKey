@@ -17,6 +17,7 @@ APP_TITLE = "HushKey"
 MASK = "••••••••••"
 AUTO_LOCK_SECONDS = 5 * 60       # lock after 5 minutes with no mouse/keyboard activity
 CLIPBOARD_CLEAR_SECONDS = 20     # wipe copied passwords from the clipboard after 20s
+REVEAL_SECONDS = 30              # a clicked entry re-hides itself after 30s
 
 IS_MAC = sys.platform == "darwin"
 UI_FONT = ("Helvetica Neue", 13) if IS_MAC else ("Segoe UI", 10)
@@ -237,6 +238,14 @@ class HushKeyApp(tk.Tk):
         title = self.tree.item(entry_id, "values")[0]
         self.tree.item(entry_id, values=(title, username, password))
         self.revealed_id = entry_id
+        # Don't leave a password sitting on screen if you walk away.
+        self.after(REVEAL_SECONDS * 1000, lambda: self._auto_hide(entry_id))
+
+    def _auto_hide(self, entry_id):
+        if self.revealed_id == entry_id and self.vault.is_unlocked:
+            self._hide_revealed(deselect=True)
+            self.status.config(text="Entry hidden again after "
+                                    f"{REVEAL_SECONDS}s. Click it to reveal.")
 
     def _hide_revealed(self, deselect: bool = False):
         if self.revealed_id and self.tree.exists(self.revealed_id):

@@ -1,17 +1,19 @@
 # Builds HushKey for Windows and Mac on GitHub's own computers.
 #
-# - Every push to main: builds both apps and attaches them to the workflow run
-#   (Actions tab -> latest run -> "Artifacts" at the bottom).
-# - Pushing a tag like v1.0.0: also creates a GitHub Release with
-#   "HushKey-Windows.exe" and "HushKey-Mac.zip" as the download buttons.
+# - Publish a Release on the GitHub website (Releases -> Draft a new release):
+#   this builds both apps and attaches HushKey-Windows.exe and HushKey-Mac.zip
+#   to that release, which is what the README's download buttons point to.
+# - Every push to main: builds both apps as a check (Actions tab -> run ->
+#   "Artifacts" at the bottom), but doesn't publish anything.
 # - You can also start it by hand from the Actions tab ("Run workflow").
 
 name: Build HushKey
 
 on:
+  release:
+    types: [published]
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -20,6 +22,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -27,6 +30,8 @@ jobs:
           - os: macos-latest
             label: Mac
     runs-on: ${{ matrix.os }}
+    env:
+      APP_VERSION: ${{ github.event.release.tag_name || '0.0.0' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -38,25 +43,65 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+          pip install -r requirements.txt
 
       - name: Run tests
         run: python -m unittest -v
 
+      # ---------------- Windows ----------------
+      # Antivirus false alarms mostly hit PyInstaller's shared, pre-built
+      # "bootloader" and single-file .exe programs that unpack themselves. So:
+      #   1. compile our own bootloader instead of using the shared one
+      #   2. build a normal folder app (not --onefile self-extracting)
+      #   3. fill in the .exe's name/version details
+      #   4. wrap it in a standard Inno Setup installer
+      - name: Install PyInstaller (own bootloader)
+        if: matrix.label == 'Windows'
+        shell: pwsh
+        env:
+          PYINSTALLER_COMPILE_BOOTLOADER: "1"
+        run: |
+          pip install --no-binary pyinstaller pyinstaller
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Bootloader compile failed - falling back to the standard one."
+            pip install pyinstaller
+          }
+
       - name: Build Windows app
         if: matrix.label == 'Windows'
+        shell: pwsh
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name HushKey app.py
-          move dist\HushKey.exe dist\HushKey-Windows.exe
-        shell: cmd
+          python packaging/make_version_info.py $env:APP_VERSION
+          pyinstaller --noconfirm --clean --windowed --noupx --name HushKey `
+            --version-file packaging/version_info.txt app.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
+      - name: Build Windows installer
+        if: matrix.label == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $ver = $env:APP_VERSION.TrimStart('v','V')
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $hash = (Get-FileHash dist\HushKey-Windows.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  HushKey-Windows.exe" | Out-File -Encoding ascii dist\HushKey-Windows.exe.sha256.txt
+
+      # ---------------- Mac ----------------
       - name: Build Mac app
         if: matrix.label == 'Mac'
         run: |
-          pyinstaller --noconfirm --windowed --name HushKey \
+          pip install pyinstaller
+          VER="${APP_VERSION#v}"
+          pyinstaller --noconfirm --clean --windowed --name HushKey \
             --osx-bundle-identifier com.hushkey.app app.py
-          cd dist && ditto -c -k --keepParent HushKey.app HushKey-Mac.zip
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" dist/HushKey.app/Contents/Info.plist || true
+          codesign --force --deep --sign - dist/HushKey.app
+          cd dist
+          ditto -c -k --keepParent HushKey.app HushKey-Mac.zip
+          shasum -a 256 HushKey-Mac.zip > HushKey-Mac.zip.sha256.txt
 
+      # ---------------- Publish ----------------
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
@@ -64,13 +109,15 @@ jobs:
           path: |
             dist/HushKey-Windows.exe
             dist/HushKey-Mac.zip
-          if-no-files-found: ignore
+            dist/*.sha256.txt
+          if-no-files-found: error
 
       - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/HushKey-Windows.exe
             dist/HushKey-Mac.zip
+            dist/*.sha256.txt
           fail_on_unmatched_files: false

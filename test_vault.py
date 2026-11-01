@@ -41,21 +41,55 @@ class VaultTests(unittest.TestCase):
     def test_nothing_readable_on_disk(self):
         v = self.new_vault()
         v.add("Riot account 1", "summoner99", "hunter2!")
-        raw = open(self.path, encoding="utf-8").read()
+        with open(self.path, encoding="utf-8") as f:
+            raw = f.read()
         for secret in ("Riot", "summoner99", "hunter2", MASTER):
             self.assertNotIn(secret, raw)
 
-    def test_tampering_detected(self):
+    def _load(self):
+        with open(self.path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def _dump(self, data):
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+    def test_edited_entry_detected(self):
         v = self.new_vault()
-        eid = v.add("Site", "me", "pw")
-        data = json.load(open(self.path))
+        v.add("Site", "me", "pw")
+        data = self._load()
         tok = data["entries"][0]["password"]
         data["entries"][0]["password"] = tok[:-6] + ("A" if tok[-6] != "A" else "B") + tok[-5:]
-        json.dump(data, open(self.path, "w"))
-        v2 = Vault(self.path)
-        v2.unlock(MASTER)
+        self._dump(data)
+        with self.assertRaises(VaultError) as ctx:
+            Vault(self.path).unlock(MASTER)
+        self.assertNotIsInstance(ctx.exception, WrongPassword)
+
+    def test_deleted_entry_detected(self):
+        v = self.new_vault()
+        v.add("Keep", "a", "b")
+        v.add("Remove me", "c", "d")
+        data = self._load()
+        data["entries"].pop()
+        self._dump(data)
         with self.assertRaises(VaultError):
-            v2.reveal(eid)
+            Vault(self.path).unlock(MASTER)
+
+    def test_weakened_settings_detected(self):
+        self.new_vault()
+        data = self._load()
+        data["iterations"] = 1  # attacker tries to make future guesses cheap
+        self._dump(data)
+        with self.assertRaises(VaultError):
+            Vault(self.path).unlock(MASTER)
+
+    def test_backup_kept(self):
+        v = self.new_vault()
+        v.add("First", "a", "b")
+        self.assertTrue(os.path.isfile(v.backup_path))
+        backup = Vault(v.backup_path)
+        backup.unlock(MASTER)  # the backup is a valid, sealed vault too
+        self.assertEqual(backup.list_titles(), [])
 
     def test_update_delete(self):
         v = self.new_vault()
@@ -86,8 +120,9 @@ class VaultTests(unittest.TestCase):
         other = os.path.join(self.tmp.name, "other.json")
         self.new_vault()
         Vault(other).create(MASTER)
-        a = json.load(open(self.path))["verifier"]
-        b = json.load(open(other))["verifier"]
+        a = self._load()["verifier"]
+        with open(other, encoding="utf-8") as f:
+            b = json.load(f)["verifier"]
         self.assertNotEqual(a, b)
 
     def test_locked_vault_refuses(self):

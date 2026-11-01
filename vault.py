@@ -25,6 +25,7 @@ import hmac
 import json
 import os
 import secrets
+import shutil
 import string
 import sys
 import tempfile
@@ -34,7 +35,7 @@ from datetime import datetime, timezone
 from cryptography.fernet import Fernet, InvalidToken
 
 APP_NAME = "HushKey"
-FILE_VERSION = 1
+FILE_VERSION = 2
 KDF_ITERATIONS = 600_000  # OWASP's recommended minimum for PBKDF2-SHA256
 MIN_MASTER_LENGTH = 8
 
@@ -118,19 +119,34 @@ def derive_keys(master: str, salt: bytes, iterations: int = KDF_ITERATIONS):
     (600k times). It's deliberately slow (~0.3s) so an attacker guessing
     millions of passwords is slowed down millions of times over.
 
-    We ask for 64 bytes and split them:
-      - first 32  -> "login check" (hashed once more and saved in the file)
-      - last 32   -> encryption key (never saved anywhere)
+    We ask for 96 bytes and split them three ways:
+      - bytes  0-31 -> "login check" (hashed once more and saved in the file)
+      - bytes 32-63 -> encryption key for your entries (never saved)
+      - bytes 64-95 -> "seal" key that detects tampering with the file (never saved)
     Splitting means the saved check value tells an attacker nothing about
-    the encryption key.
+    the other two keys.
     """
     stretched = hashlib.pbkdf2_hmac(
-        "sha256", master.encode("utf-8"), salt, iterations, dklen=64
+        "sha256", master.encode("utf-8"), salt, iterations, dklen=96
     )
-    auth_part, enc_part = stretched[:32], stretched[32:]
+    auth_part, enc_part, seal_key = stretched[:32], stretched[32:64], stretched[64:]
     verifier = hashlib.sha256(auth_part).digest()
     fernet_key = base64.urlsafe_b64encode(enc_part)
-    return verifier, fernet_key
+    return verifier, fernet_key, seal_key
+
+
+def compute_seal(data: dict, seal_key: bytes) -> str:
+    """HMAC-SHA256 "fingerprint" over the WHOLE vault file.
+
+    Each entry is already tamper-proof on its own, but an attacker could still
+    delete entries, swap in an old copy of one, or change the settings at the
+    top of the file. The seal covers everything at once: change one character
+    anywhere and the fingerprint no longer matches. Only someone with your
+    master password can make a valid seal.
+    """
+    body = {k: v for k, v in data.items() if k != "seal"}
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return _b64e(hmac.new(seal_key, canonical, hashlib.sha256).digest())
 
 
 def generate_password(length: int = 20, symbols: bool = True) -> str:
@@ -161,6 +177,11 @@ class Vault:
         self.path = path or default_vault_path()
         self._data: dict | None = None
         self._fernet: Fernet | None = None
+        self._seal_key: bytes | None = None
+
+    @property
+    def backup_path(self) -> str:
+        return self.path + ".bak"
 
     # ---- state -----------------------------------------------------------
 
@@ -183,7 +204,8 @@ class Vault:
         if len(master) < MIN_MASTER_LENGTH:
             raise VaultError(f"Master password must be at least {MIN_MASTER_LENGTH} characters.")
         salt = secrets.token_bytes(16)  # random per vault, so identical passwords hash differently
-        verifier, key = derive_keys(master, salt)
+        verifier, key, seal_key = derive_keys(master, salt)
+        self._seal_key = seal_key
         self._data = {
             "app": APP_NAME,
             "version": FILE_VERSION,
@@ -212,20 +234,30 @@ class Vault:
         except (KeyError, ValueError):
             raise VaultError("The vault file is missing required fields.")
 
-        verifier, key = derive_keys(master, salt, iterations)
+        verifier, key, seal_key = derive_keys(master, salt, iterations)
         # compare_digest takes the same time whether 1 or 31 bytes match,
         # so timing can't leak how close a guess was.
         if not hmac.compare_digest(verifier, stored):
             raise WrongPassword("Wrong master password.")
 
+        # Right password - now make sure nobody changed the file behind our back.
+        expected = compute_seal(data, seal_key)
+        if not hmac.compare_digest(expected, str(data.get("seal", ""))):
+            raise VaultError(
+                "Security warning: the vault file was changed outside HushKey "
+                "and failed its tamper check. Your previous copy is at:\n" + self.backup_path
+            )
+
         self._data = data
         self._data.setdefault("entries", [])
         self._fernet = Fernet(key)
+        self._seal_key = seal_key
 
     def lock(self) -> None:
-        """Forget the key and data. (Python can't truly wipe memory, but
+        """Forget the keys and data. (Python can't truly wipe memory, but
         dropping the references lets them be cleaned up.)"""
         self._fernet = None
+        self._seal_key = None
         self._data = None
 
     def change_master(self, old: str, new: str) -> None:
@@ -234,17 +266,18 @@ class Vault:
         if len(new) < MIN_MASTER_LENGTH:
             raise VaultError(f"Master password must be at least {MIN_MASTER_LENGTH} characters.")
         salt = _b64d(self._data["salt"])
-        verifier, _ = derive_keys(old, salt, int(self._data["iterations"]))
+        verifier, _, _ = derive_keys(old, salt, int(self._data["iterations"]))
         if not hmac.compare_digest(verifier, _b64d(self._data["verifier"])):
             raise WrongPassword("Current master password is wrong.")
 
         plain = [self._decrypt_entry(e) for e in self._data["entries"]]
         new_salt = secrets.token_bytes(16)
-        new_verifier, new_key = derive_keys(new, new_salt)
+        new_verifier, new_key, new_seal_key = derive_keys(new, new_salt)
         self._data["salt"] = _b64e(new_salt)
         self._data["verifier"] = _b64e(new_verifier)
         self._data["iterations"] = KDF_ITERATIONS
         self._fernet = Fernet(new_key)
+        self._seal_key = new_seal_key
         self._data["entries"] = [
             self._encrypt_entry(p["title"], p["username"], p["password"], p["id"], p["created"])
             for p in plain
@@ -289,6 +322,13 @@ class Vault:
         raise VaultError("Entry not found.")
 
     def _save(self) -> None:
+        """Seal the data, keep one backup of the previous version, then save."""
+        self._data["seal"] = compute_seal(self._data, self._seal_key)
+        if os.path.isfile(self.path):
+            try:
+                shutil.copy2(self.path, self.backup_path)
+            except OSError:
+                pass  # a failed backup shouldn't stop the real save
         _atomic_write_json(self.path, self._data)
 
     # ---- public entry API -----------------------------------------------
