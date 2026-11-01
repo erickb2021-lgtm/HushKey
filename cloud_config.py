@@ -13,5 +13,5 @@ their email with a code.
 NEVER put the "secret" / "service_role" key here. That one bypasses the rules.
 """
 
-SUPABASE_URL = ""        # e.g. "https://abcdefghijklmnop.supabase.co"
-SUPABASE_PUBLIC_KEY = ""  # starts with "sb_publishable_" (or a long "eyJ..." anon key)
+NEXT_PUBLIC_SUPABASE_URL=https://kmeccpycoakefmmcnztr.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_uFM_I_R9f2NMfr4cnh9yKw_OnoBjwKV
