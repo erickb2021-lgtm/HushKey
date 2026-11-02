@@ -5,12 +5,25 @@
 <p align="center">A simple, secure password manager for <b>Windows and Mac</b>.<br>Your logins stay encrypted on your computer, and you can recover your vault by email.</p>
 
 <p align="center">
-  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.8 for Windows" src="https://img.shields.io/badge/Download_v2.0.8_for-Windows-16925A?style=for-the-badge&logo=windows&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.9 for Windows" src="https://img.shields.io/badge/Download_v2.0.9_for-Windows-16925A?style=for-the-badge&logo=windows&logoColor=white" height="44"></a>
   &nbsp;&nbsp;
-  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.8 for Mac" src="https://img.shields.io/badge/Download_v2.0.8_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.9 for Mac" src="https://img.shields.io/badge/Download_v2.0.9_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
 </p>
 
-<p align="center"><b>Latest version: v2.0.8</b> · The buttons always download the newest release · <a href="../../releases">All releases</a></p>
+<p align="center"><b>Latest version: v2.0.9</b> · The buttons always download the newest release · <a href="../../releases">All releases</a></p>
+
+### 🪟 Installing HushKey on Windows (first time only)
+
+HushKey is free and open source, but it isn't signed with a paid code-signing certificate yet, so Microsoft shows a few extra warnings the first time. They don't mean the app has a virus. Every download is built in public from this code by GitHub (see [Is it safe?](#is-it-safe)).
+
+1. **Download:** click **Download for Windows** above.
+2. **Microsoft Edge** may say *"HushKey-Windows.exe isn't commonly downloaded."* Click the **⋯** next to the download → **Keep** → **Show more** → **Keep anyway**. (Chrome: click **Keep**.)
+3. **Run the installer.** If a blue box says *"Windows protected your PC"* (Microsoft Defender SmartScreen), click **More info** → **Run anyway**.
+4. Follow the installer (no admin password needed). HushKey opens when it's done and is added to your Start menu.
+
+**Smart App Control:** on some Windows 11 PCs, *Smart App Control* blocks apps that aren't signed and offers no "Run anyway" button. You can check it in **Windows Security → App & browser control → Smart App Control**. Turning it off lets HushKey run, but it also lowers protection for every other app, so only do it if you're comfortable with that. Recent Windows 11 updates let you turn it back on afterward without reinstalling Windows.
+
+**Updating:** from v2.0.9 on, HushKey updates itself (see [Automatic updates](#automatic-updates)). The warnings above only appear on the first install.
 
 ### 🍎 Opening HushKey on a Mac (first time only)
 
@@ -29,6 +42,18 @@ After that, HushKey opens normally every time.
 - **Older macOS (Ventura or Sonoma):** right-click HushKey → **Open** → **Open** also works.
 - **Quick way (Terminal):** paste `xattr -dr com.apple.quarantine /Applications/HushKey.app` and press Enter.
 - **Still won't open?** The Mac version needs an Apple Silicon Mac (M1 or newer). Check  → About This Mac → "Chip: Apple M…".
+
+## What's new in v2.0.9
+
+**A big one:**
+
+- **🔄 Sync across computers.** Sign in on any computer with your **email + master password + the 8-digit code**, and every login you saved elsewhere is there. Changes sync automatically, both ways, about every minute. Only **encrypted** data is uploaded: the server can't read a single login, and HushKey refuses any synced copy that fails its tamper check. Tick **Remember this computer for 30 days** so you don't need a code each time.
+- **⬆️ Automatic updates.** When a new version is out, HushKey shows a pop-up with the new version and what's new. Click **Update now** (it updates in seconds and reopens), or **Later** and it updates by itself the next time you close HushKey. No more downloading every version by hand.
+- **🪟 Windows install guide** for Microsoft Edge, SmartScreen and Smart App Control warnings.
+- **📍 Window position:** HushKey opens in the center of your screen the first time, then exactly where you left it after that.
+- **Tidier footer:** "Remembered until…" now shows once, plus a sync status (Synced ✓, Offline, or Sync paused).
+
+> **Already have HushKey v2.0.8 or older?** Download v2.0.9 from the buttons above once. From then on, updates arrive automatically.
 
 ## What's new in v2.0.8
 
@@ -72,13 +97,14 @@ After that, HushKey opens normally every time.
 
 | Your computer | Download | How to open |
 |---|---|---|
-| **Windows** | `HushKey-Windows.exe` | Double-click to install (no admin needed). It opens HushKey when done and adds it to the Start Menu. To **update**, just run the newest installer: it replaces the old version and keeps your vault. If a blue "Windows protected your PC" box appears, click **More info → Run anyway** (see [why](#is-it-safe)). |
+| **Windows** (10 and 11) | `HushKey-Windows.exe` | Double-click to install (no admin needed). It opens HushKey when done and adds it to the Start menu. First time, follow [Installing HushKey on Windows](#-installing-hushkey-on-windows-first-time-only). |
 | **Mac** (Apple Silicon, M1 or newer) | `HushKey-Mac.zip` | Unzip, drag **HushKey** into Applications. The first time, follow [Opening HushKey on a Mac](#-opening-hushkey-on-a-mac-first-time-only). |
 
 ## How to use it
 
 1. **Create a vault:** enter your email and a master password. Type the password once where you can see it, then again **hidden, from memory**. You'll get a **welcome email** with a 8-digit code to confirm the email is yours.
-2. **Sign in** with your email and master password. Tick **Remember this device for 30 days** to stay signed in: next time you open HushKey, it goes straight to your vault. On a computer that isn't remembered, HushKey also emails you a **8-digit sign-in code**. Only the exact code sent to your email works. Tick **Remember this device for 30 days** to skip the code on this computer. You can undo it any time with **Forget this device** at the bottom of your vault.
+2. **Sign in** with your email and master password. On a computer that isn't remembered, HushKey also emails you an **8-digit sign-in code**, and only the exact code sent to your email works. Tick **Remember this device for 30 days** to skip the code and stay signed in: next time you open HushKey, it goes straight to your vault. Undo it any time with **Forget this device** at the bottom of your vault.
+   - **On a new computer?** Just sign in with the same email and master password. After the 8-digit code, HushKey brings your whole vault over. See [Sync across computers](#sync-across-computers).
 3. Click **+ Add login** and fill in:
    - **Client name:** type the name of the account
    - **Choose a logo for this login:** HushKey suggests one from the client name. Or click the **▾** arrow to browse the **Top 50 apps & games** and **everyday icons**, type to search 3,400+ logos (e.g. `riot`), or click **Use my own picture…**. Logos have see-through backgrounds and adjust to light and dark mode.
@@ -90,6 +116,28 @@ After that, HushKey opens normally every time.
 7. **Import / Export:** click **Import** to bring passwords over from Google or another password manager (instructions included), or **Export** to save an encrypted backup or a CSV. See [Importing from Google](#importing-from-google).
 8. **Light or dark?** Click the **key switch** at the top right: key on the moon side = dark, key on the sun side = light.
 9. The **version** you're running is always shown at the bottom of the app.
+
+### Sync across computers
+
+Your vault stays the same on every computer you use, like 1Password or Bitwarden:
+
+1. On your first computer, sync turns on when you create your vault, or when you sign in with an 8-digit code. Older vaults show a gold **Turn on sync** banner instead.
+2. On another computer, install HushKey and **sign in with the same email and master password**, then enter the 8-digit code. Your logins appear.
+3. From then on, any login you add, edit or delete on one computer shows up on the others within about a minute. The footer shows **Synced ✓**.
+
+**How it stays private (zero-knowledge):** HushKey uploads only the **encrypted** vault. The key is made from your master password, which never leaves your computer, so nobody at the server, not even the person running it, can read your logins. Every copy HushKey downloads must pass the vault's **tamper seal**, so the server can't change anything either. "Remember this computer" stays on each computer and is never synced.
+
+**If you see "Sync paused":** it's been a while, or you clicked Forget this device. Click it and enter the 8-digit code to resume. **"Offline"** means there's no internet; HushKey syncs when you're back online.
+
+### Automatic updates
+
+HushKey checks GitHub for a new version each time it opens. If there is one:
+
+- A pop-up shows the **new version** and **what's new**, with **Update now** and **Later**.
+- **Update now** installs it in a few seconds and reopens HushKey.
+- **Later** downloads it in the background and installs it **when you close HushKey**, so the next time you open it you're on the newest version.
+
+Updates are checked against the release's SHA-256 fingerprint before installing, and your vault is never touched. On a Mac, HushKey must be in your **Applications** folder to update itself.
 
 ### Importing from Google
 
@@ -159,17 +207,19 @@ Saving uses an **atomic write**: write to a temp file, flush it to disk, then sw
 | File | What it does |
 |---|---|
 | `vault.py` | Hashing, encryption, key wrapping, reading/writing vault files. |
-| `cloud.py` | Talks to Supabase for email codes and recovery secrets. |
+| `cloud.py` | Talks to Supabase: email codes, recovery secrets and the encrypted synced vault. |
 | `cloud_config.py` | Your Supabase project's address and public key. |
 | `app.py` | The windows and screens (CustomTkinter). |
 | `brand.py` | Draws the HushKey logo in code. |
 | `brand_icons.py` | Finds and draws app logos (Riot, Discord…) for logins. |
 | `brand_data.py` | The app-logo list and font, built into the code so they're always included. |
 | `device_lock.py` | Keeps the "Remember this device" key in Windows' protected storage or the Mac Keychain. |
+| `sync.py` | Encrypted sync between your computers. |
+| `updater.py` | Checks GitHub for new versions, downloads and installs them. |
 | `importer.py` | Imports password exports (Google and others) and writes CSV exports. |
 | `version.py` | The app's version number. |
 | `test_*.py` | Tests: `python -m unittest -v` |
-| `supabase/setup.sql` | Database table + security rules for Supabase. |
+| `supabase/setup.sql` | Database tables + security rules for Supabase (recovery keys and synced vaults). |
 | `SETUP_EMAIL_RECOVERY.md` | Step-by-step guide to turn on email recovery. |
 | `assets/` | App icons and the bundled app-logo list. `packaging/make_icons.py` and `packaging/make_brand_index.py` rebuild them. |
 | `packaging/` | Windows installer script and .exe version details. |
@@ -188,15 +238,17 @@ On Mac, use `python3`. Install Python from python.org so the window library (Tki
 
 1. Upload your changed files to GitHub, **keeping them in the same folders**.
 2. On your repo page, click **Releases → Draft a new release**.
-3. Click **Choose a tag**, type the next version, and click **Create new tag**. Versions go up by one each update: `v2.0.8`, then `v2.0.9`, `v2.0.10`… The number you type is what the app shows at the bottom.
+3. Click **Choose a tag**, type the next version, and click **Create new tag**. Versions go up by one each update: `v2.0.9`, then `v2.0.10`, `v2.0.11`… The number you type is what the app shows at the bottom.
 4. Click **Publish release**.
 5. Open the **Actions** tab and wait for the green check (~5–10 minutes). GitHub runs all the tests, opens every screen on a real Windows PC and a real Mac to make sure nothing crashes, then attaches the downloads. The buttons at the top of this page then serve the new version.
+6. **Everyone on v2.0.9 or newer gets an update pop-up** the next time they open HushKey. The text you write in the release's **description** is shown as "What's new" in that pop-up, so paste the release's What's new list there.
 
 ## Is it safe?
 
 - **Every download has a fingerprint.** Each release includes `.sha256.txt` files. To check your download wasn't changed:
   - Windows (PowerShell): `Get-FileHash HushKey-Windows.exe`
   - Mac (Terminal): `shasum -a 256 HushKey-Mac.zip`
+- **Sync is zero-knowledge:** only encrypted data is uploaded and every download is tamper-checked. **Updates** are fingerprint-checked before they install.
 - **Built in the open.** GitHub builds every download straight from the code in this repo. You can watch each build in the Actions tab.
 - **Publisher:** the app and installer list **Erick Bardales** as publisher and copyright holder (right-click the file → Properties → Details).
 - **Why Windows may still say "Unknown publisher":** the publisher in that warning comes **only** from a code-signing certificate, a digital ID that a certificate company verifies belongs to you. Until HushKey is signed, Windows shows "Unknown publisher" no matter how safe the app is. The Windows build already avoids common false virus alarms (standard installer, its own PyInstaller bootloader, no self-unpacking single .exe, full version details). If Defender ever flags it, report the false positive at [microsoft.com/wdsi/filesubmission](https://www.microsoft.com/en-us/wdsi/filesubmission).
@@ -216,4 +268,6 @@ App logos come from [Simple Icons](https://simpleicons.org) (CC0 license, see `a
 - Nothing can protect you if your computer already has malware such as a keylogger.
 - The Mac build is for Apple Silicon (M1 and newer). Intel Macs can run it from source.
 - **Upgrading from 1.0:** version 2 uses email accounts and a new vault format, so vaults made in 1.0 aren't opened. Create a new vault and re-add your logins. Vaults made in 2.0.0 keep working in 2.0.1 and later.
+- Sync uses "newest change wins" per login. If you edit the same login on two computers within the same second, one edit is kept.
+- Automatic updates only exist from v2.0.9 on, so older versions need one manual download.
 - The sign-in code is an extra check on top of your master password. The encryption itself only needs the master password, so pick a strong one.

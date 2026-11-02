@@ -3,7 +3,7 @@
 ; installs per-user (no admin prompt) with a Start Menu shortcut.
 
 #ifndef MyAppVersion
-  #define MyAppVersion "2.0.8"
+  #define MyAppVersion "2.0.9"
 #endif
 
 [Setup]
@@ -50,3 +50,11 @@ Name: "{userdesktop}\HushKey"; Filename: "{app}\HushKey.exe"; IconFilename: "{ap
 ; ask Windows to refresh its icon memory so the new logo shows right away
 Filename: "{sys}\ie4uinit.exe"; Parameters: "-show"; Flags: runhidden nowait skipifdoesntexist
 Filename: "{app}\HushKey.exe"; Description: "Open HushKey now"; Flags: nowait postinstall skipifsilent
+; automatic updates: reopen HushKey after a silent "Update now" install
+Filename: "{app}\HushKey.exe"; Flags: nowait skipifnotsilent; Check: ShouldRelaunch
+
+[Code]
+function ShouldRelaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;

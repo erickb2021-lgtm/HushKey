@@ -34,10 +34,16 @@ class CloudError(Exception):
     """A friendly, show-it-to-the-user error."""
 
 
+class SessionExpired(CloudError):
+    """The saved sign-in for syncing ran out; an email code is needed again."""
+
+
 @dataclass
 class Session:
     access_token: str
     user_id: str
+    refresh_token: str = ""   # lets sync keep working without a new code every hour
+    expires_at: float = 0.0
 
 
 class Cloud:
@@ -54,7 +60,7 @@ class Cloud:
     # ---- low level ---------------------------------------------------------
 
     def _request(self, method: str, path: str, body=None, token: str | None = None,
-                 extra_headers: dict | None = None):
+                 extra_headers: dict | None = None, sync: bool = False):
         if not self.configured:
             raise CloudError("Email recovery isn't set up in this copy of HushKey.")
         headers = {"apikey": self.key, "Content-Type": "application/json",
@@ -69,7 +75,10 @@ class Cloud:
             raw = resp.read()
             return json.loads(raw) if raw else None
         except urllib.error.HTTPError as e:
-            raise CloudError(self._friendly(e.code, e.read()))
+            raw = e.read()
+            if sync and e.code in (400, 401, 403):
+                raise SessionExpired("Sync needs you to confirm your email again.")
+            raise CloudError(self._friendly(e.code, raw))
         except (urllib.error.URLError, TimeoutError, OSError):
             raise CloudError("Couldn't reach the recovery service. Check your internet connection.")
 
@@ -100,10 +109,25 @@ class Cloud:
         if not 6 <= len(code) <= 10:
             raise CloudError("Enter the code from the email (just the numbers).")
         data = self._request("POST", "/auth/v1/verify", {"type": "email", "email": email, "token": code})
+        return self._session(data)
+
+    @staticmethod
+    def _session(data) -> Session:
+        import time
         try:
-            return Session(data["access_token"], data["user"]["id"])
-        except (TypeError, KeyError):
+            return Session(data["access_token"], data["user"]["id"], data.get("refresh_token", ""),
+                           time.time() + float(data.get("expires_in", 3600)) - 60)
+        except (TypeError, KeyError, ValueError):
             raise CloudError("The recovery service sent an unexpected reply.")
+
+    def refresh(self, refresh_token: str) -> Session:
+        """Swap a saved refresh token for a fresh session (no email code needed).
+        Supabase hands back a NEW refresh token each time; save it."""
+        if not refresh_token:
+            raise SessionExpired("Sync needs you to confirm your email again.")
+        data = self._request("POST", "/auth/v1/token?grant_type=refresh_token",
+                             {"refresh_token": refresh_token}, sync=True)
+        return self._session(data)
 
     # ---- recovery secrets --------------------------------------------------
 
@@ -115,6 +139,29 @@ class Cloud:
             token=session.access_token,
             extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
         )
+
+    # ---- encrypted vault sync ---------------------------------------------
+    # Only the ENCRYPTED vault is uploaded. Supabase can't read a single login:
+    # the key is your master password, which never leaves your computer.
+
+    def get_vault(self, session: Session):
+        """The encrypted vault saved in this account, or None."""
+        rows = self._request("GET", "/rest/v1/vaults?select=vault_id,data,rev&limit=1",
+                             token=session.access_token, sync=True)
+        if not rows:
+            return None
+        row = rows[0]
+        try:
+            return {"vault_id": row["vault_id"], "data": json.loads(row["data"]), "rev": int(row.get("rev") or 0)}
+        except (KeyError, ValueError, TypeError):
+            raise CloudError("The synced vault in your account is damaged.")
+
+    def put_vault(self, session: Session, vault_id: str, data_json: str, rev: int) -> None:
+        self._request(
+            "POST", "/rest/v1/vaults",
+            {"user_id": session.user_id, "vault_id": vault_id, "data": data_json, "rev": rev},
+            token=session.access_token, sync=True,
+            extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"})
 
     def fetch_secret(self, session: Session, vault_id: str) -> bytes:
         query = urllib.parse.urlencode({"vault_id": "eq." + vault_id, "select": "secret"})

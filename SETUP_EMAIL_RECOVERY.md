@@ -4,7 +4,10 @@ HushKey uses **Supabase** (a free online service) to email 8-digit codes and kee
 
 - a **welcome email** with their code when they sign up,
 - a **sign-in code** when they sign in on a computer that isn't remembered,
-- a **forgot-password code** if they forget their master password.
+- a **forgot-password code** if they forget their master password,
+- **sync**: their encrypted vault on every computer they sign in to.
+
+> **Updating from v2.0.8 or older?** Run `supabase/setup.sql` again (step 2). It adds the `vaults` table that sync needs and doesn't delete anything.
 
 > Until you finish this, HushKey still works. It just warns that email recovery isn't set up.
 
@@ -27,7 +30,7 @@ Supabase's website changes its menu names now and then. If a button isn't exactl
 2. Open `supabase/setup.sql` from this project, copy **everything**, and paste it in.
 3. Click **Run**. You should see *Success. No rows returned.*
 
-These rules make sure each person can only ever read their **own** recovery secret, and only after entering a correct email code.
+These rules make sure each person can only ever read their **own** recovery secret and their **own** encrypted vault, and only after entering a correct email code. You should see two tables under **Table Editor**: `recovery_keys` and `vaults`.
 
 ## 3. Make the emails show a 8-digit code
 

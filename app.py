@@ -21,10 +21,12 @@ import customtkinter as ctk
 
 import brand_icons
 import device_lock
+import updater as updater_mod
+from sync import Syncer, VaultMismatch
 import importer
 from brand import draw_logo
-from cloud import Cloud, CloudError
-from vault import (MIN_MASTER_LENGTH, REMEMBER_DAYS, Vault, VaultError,
+from cloud import Cloud, CloudError, SessionExpired
+from vault import (MIN_MASTER_LENGTH, REMEMBER_DAYS, TamperError, Vault, VaultError,
                    WrongPassword, check_new_master, generate_password,
                    looks_like_email, new_recovery_secret, new_vault_id,
                    normalize_email, password_strength)
@@ -606,18 +608,30 @@ class LogoPicker(ctk.CTkFrame):
 # ==========================================================================
 
 class HushKeyApp(ctk.CTk):
-    def __init__(self, data_dir: str | None = None, cloud: Cloud | None = None):
+    def __init__(self, data_dir: str | None = None, cloud: Cloud | None = None, updater=None):
         self.data_dir = data_dir
         self.settings = load_settings(data_dir)
         ctk.set_appearance_mode("light" if self.settings.get("theme") == "light" else "dark")
         super().__init__(fg_color=BG)
         load_fonts(self)
         self.title(APP_NAME)
-        self.geometry("1000x700")
         self.minsize(880, 640)
+        self._place_window()
         set_window_icon(self)
 
         self.cloud = cloud or Cloud()
+        self.syncer = None
+        self._last_session = None   # the latest email-code sign-in, used to turn on sync
+        self._sync_job = None
+        self._sync_busy = False
+        self._sync_again = False
+        self._sync_blocked = False
+        self._last_auto_sync = time.time()
+        self.updater = updater if updater is not None else updater_mod.Updater()
+        self.update_release = None   # newer version found on GitHub
+        self.update_file = None      # its downloaded, verified installer
+        self.update_error = ""
+        self._installing = False
         self.vault: Vault | None = None
         self.last_email = ""
         self.failed = 0
@@ -636,6 +650,8 @@ class HushKeyApp(ctk.CTk):
 
         for ev in ("<Any-KeyPress>", "<Any-ButtonPress>", "<Motion>"):
             self.bind_all(ev, self._touch, add="+")
+        self._geo_job = None
+        self.bind("<Configure>", self._window_moved, add="+")
         self.protocol("WM_DELETE_WINDOW", self.quit_app)
         self.after(60, self._poll_jobs)
         self.after(1000, self._tick)
@@ -650,6 +666,58 @@ class HushKeyApp(ctk.CTk):
             save_settings(self.settings, self.data_dir)
         self.stay_var = None
         self._try_auto_signin(notice)
+        if self.updater is not None and self.updater.enabled:
+            self.after(1500, self.check_for_update)
+
+    # ------------------------------------------------------------ window position
+
+    def _place_window(self):
+        """First launch: 1000x700 in the middle of the screen. After that:
+        exactly where (and how big) it was when you last closed it."""
+        import re
+        w, h = 1000, 700
+        saved = self.settings.get("window") or ""
+        m = re.fullmatch(r"(\d+)x(\d+)\+(-?\d+)\+(-?\d+)", saved)
+        try:
+            self.update_idletasks()
+            sw = max(self.winfo_screenwidth(), self.winfo_vrootwidth())
+            sh = max(self.winfo_screenheight(), self.winfo_vrootheight())
+            scale = self._get_window_scaling() if hasattr(self, "_get_window_scaling") else 1.0
+        except Exception:
+            sw, sh, scale = 1920, 1080, 1.0
+        if m:
+            sw_, sh_, sx, sy = (int(v) for v in m.groups())
+            w, h = max(880, min(sw_, int(sw / scale))), max(640, min(sh_, int(sh / scale)))
+            # only reuse the spot if the window would still be on screen
+            if -int(w * scale) + 120 < sx < sw - 120 and 0 <= sy < sh - 80:
+                self.geometry(f"{w}x{h}+{sx}+{sy}")
+                if self.settings.get("window_zoomed") and IS_WIN:
+                    self.after(50, lambda: self.state("zoomed"))
+                return
+        x = max(0, int((self.winfo_screenwidth() - w * scale) / 2))
+        y = max(0, int((self.winfo_screenheight() - h * scale) / 2.2))
+        self.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _window_moved(self, event=None):
+        if event is not None and event.widget is not self:
+            return
+        if self._geo_job is not None:
+            try:
+                self.after_cancel(self._geo_job)
+            except Exception:
+                pass
+        self._geo_job = self.after(800, self._save_window)
+
+    def _save_window(self):
+        self._geo_job = None
+        try:
+            zoomed = IS_WIN and self.state() == "zoomed"
+            if not zoomed:
+                self.settings["window"] = self.geometry()
+            self.settings["window_zoomed"] = bool(zoomed)
+            save_settings(self.settings, self.data_dir)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ stay signed in
 
@@ -674,9 +742,7 @@ class HushKeyApp(ctk.CTk):
             self.last_email = addr
             return self.show_signin((notice + " " if notice else "") + str(exc), ok=False)
         self._enter(v, addr)
-        until = time.strftime("%b %d", time.localtime(v.auto_signin_until))
-        self.status.configure(text=(notice + " " if notice else "") +
-                              f"Signed in automatically. This computer is remembered until {until}.",
+        self.status.configure(text=(notice + " " if notice else "") + "Signed in automatically.",
                               text_color=ACCENT)
 
     def _remember_device(self, v: Vault, addr: str):
@@ -797,6 +863,22 @@ class HushKeyApp(ctk.CTk):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def run_quiet(self, work, on_ok=None, on_err=None):
+        """Background work that should finish even if the screen changes
+        (syncing, update checks)."""
+        def finish(cb, value):
+            if cb is not None and self.winfo_exists():
+                cb(value)
+
+        def worker():
+            try:
+                result = work()
+                self._jobs.put((finish, on_ok, result))
+            except Exception as exc:  # noqa: BLE001
+                self._jobs.put((finish, on_err, exc))
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _poll_jobs(self):
         try:
             while True:
@@ -812,6 +894,10 @@ class HushKeyApp(ctk.CTk):
     def _tick(self):
         if self.vault and self.vault.is_unlocked and time.time() - self.last_activity > AUTO_LOCK_SECONDS:
             self.sign_out("Locked after 5 minutes of no activity.", forget=False)
+        if (self.vault and self.vault.is_unlocked and self.syncer is not None
+                and time.time() - self._last_auto_sync > 60):
+            self._last_auto_sync = time.time()
+            self.request_sync(delay=0)   # pick up changes made on your other computers
         if self.revealed_id and self.revealed_id in self.rows:
             left = int(self.reveal_deadline - time.time())
             if left <= 0:
@@ -873,7 +959,10 @@ class HushKeyApp(ctk.CTk):
             if wait > 0:
                 return say(f"Too many tries. Wait {int(wait) + 1}s and try again.")
             v = self._vault_for(addr)
+            stay = bool(self.stay_var is not None and self.stay_var.get())
             if not v.exists():
+                if self.cloud.configured:
+                    return self._sign_in_new_computer(addr, pw.get(), say, unlock_btn, stay)
                 return say("There's no HushKey vault for this email on this computer. "
                            "Check the spelling, or create a vault.")
 
@@ -889,7 +978,10 @@ class HushKeyApp(ctk.CTk):
                     delay = min(60, 2 ** self.failed) if self.failed >= 3 else 0
                     self.wait_until = time.time() + delay
                     pw.set("")
-                    say("Wrong email or master password." + (f" Wait {delay}s before trying again." if delay else ""))
+                    hint = (" Changed it on another computer? Use your old password here once; "
+                            "it updates after syncing.") if self.cloud.configured and self.failed == 1 else ""
+                    say("Wrong email or master password." + (f" Wait {delay}s before trying again." if delay else "")
+                        + hint)
                 else:
                     say(self._err_text(exc))
 
@@ -908,6 +1000,9 @@ class HushKeyApp(ctk.CTk):
         ctk.CTkLabel(c, text="Encrypted on this device. Your master password never leaves it.",
                      font=font(12), text_color=SUBTLE).pack(pady=(14, 0))
         ctk.CTkLabel(c, text=f"v{__version__}", font=font(11), text_color=SUBTLE).pack(pady=(4, 0))
+        self._update_slot = ctk.CTkFrame(c, fg_color="transparent")
+        self._update_slot.pack()
+        self._show_update_link()
         (pw.focus() if self.last_email else email.focus_set())
 
     def _after_password(self, v: Vault, addr: str, say, button, stay=False):
@@ -940,6 +1035,47 @@ class HushKeyApp(ctk.CTk):
                         on_done=done, on_cancel=cancel, remember=True, remember_default=stay),
                     failed, button, "Sending code…")
 
+    def _sign_in_new_computer(self, addr, master, say, button, stay):
+        """No vault on this computer yet: after an 8-digit email code, download
+        the encrypted vault from your account and open it with your master
+        password. Nothing readable ever comes from the server."""
+        syncer = Syncer(self.cloud, addr, self._key_folder())
+
+        def fetch_and_open(session):
+            def work():
+                data = syncer.download_for_new_computer(session)
+                v = Vault.save_cloud_copy(addr, self.data_dir, data)
+                try:
+                    v.unlock(master)
+                except VaultError:
+                    for path in (v.path, v.backup_path):
+                        try:
+                            os.remove(path)
+                        except OSError:
+                            pass
+                    syncer.forget()
+                    return None
+                return v
+            return work
+
+        def done(v):
+            if v is None:
+                return self.show_signin("That master password doesn't match the vault in your HushKey "
+                                        "account. Check it and try again.")
+            if self.remember_var is not None and self.remember_var.get():
+                self._remember_device(v, addr)
+            self._enter(v, addr)
+            self.status.configure(text="Welcome! Your vault was brought over from your other computer "
+                                       "and is now synced.", text_color=ACCENT)
+
+        self.run_bg(lambda: self.cloud.send_code(addr),
+                    lambda _: self.show_code(
+                        addr, "Sign in on this computer",
+                        "To bring your vault to this computer, we emailed you an 8-digit code.",
+                        on_verified=fetch_and_open, on_done=done, on_cancel=self.show_signin,
+                        done_text="Bringing your vault…", remember=True, remember_default=stay),
+                    lambda exc: say(self._err_text(exc)), button, "Sending code…")
+
     def _ensure_recovery(self, v: Vault, session):
         """Give a vault made before email was set up its recovery key.
         Runs in the background, right after the user proved their email."""
@@ -949,21 +1085,110 @@ class HushKeyApp(ctk.CTk):
             v.enable_recovery(secret)                             # ...then the vault
 
     def turn_on_recovery(self):
+        """Turn on sync (and email recovery, if it's off) with an 8-digit code."""
         v, addr = self.vault, self.vault.email
 
         def done(_):
+            self._sync_blocked = False
             self.show_main()
-            self.status.configure(text="Email recovery is on. You can now reset your master "
-                                       "password with a code sent to your email.", text_color=ACCENT)
+            self.status.configure(text="Sync and email recovery are on. Sign in on any computer with "
+                                       "your email and master password.", text_color=ACCENT)
 
         self.run_bg(lambda: self.cloud.send_code(addr),
                     lambda _: self.show_code(
-                        addr, "Turn on email recovery",
-                        "We emailed you a 8-digit code to confirm it's your email.",
+                        addr, "Turn on sync",
+                        "We emailed you an 8-digit code to confirm it's your email.",
                         on_verified=lambda s: (lambda: self._ensure_recovery(v, s)),
                         on_done=done, on_cancel=self.show_main, done_text="Turning on…"),
                     lambda exc: self.status.configure(text=self._err_text(exc), text_color=DANGER),
                     self.recovery_btn, "Sending code…")
+
+    # ------------------------------------------------------------ sync
+
+    def request_sync(self, delay=1500):
+        """Sync soon (changes are grouped, so typing fast doesn't spam the server)."""
+        if self.syncer is None or self._sync_blocked:
+            return
+        if self._sync_job is not None:
+            try:
+                self.after_cancel(self._sync_job)
+            except Exception:
+                pass
+        self._sync_job = self.after(delay, self._sync_now)
+
+    def _sync_now(self):
+        self._sync_job = None
+        syncer, v = self.syncer, self.vault
+        if syncer is None or v is None or not v.is_unlocked or self._sync_blocked:
+            return
+        if self._sync_busy:
+            self._sync_again = True
+            return
+        if not syncer.enabled and syncer._session is None:
+            syncer.state = "off"
+            return self._show_sync_state()
+        self._sync_busy = True
+        syncer.state = "syncing"
+        self._show_sync_state()
+
+        def fetched(row):
+            if self.vault is not v or not v.is_unlocked:
+                return self._sync_finished()
+            before = id(v._data)
+            try:
+                plan = syncer.reconcile(v, row)
+            except VaultMismatch as exc:
+                self._sync_finished("mismatch")
+                return CombineDialog(self, exc.cloud_data)
+            except TamperError as exc:
+                return self._sync_finished("error", str(exc))
+            if id(v._data) != before and hasattr(self, "listbox") and self.listbox.winfo_exists():
+                self.refresh_rows()   # changes arrived from another computer
+            self.run_quiet(lambda: syncer.upload(plan), lambda _: self._sync_finished("ok"), failed)
+
+        def failed(exc):
+            if isinstance(exc, SessionExpired):
+                self._sync_finished("paused")
+            elif isinstance(exc, CloudError):
+                self._sync_finished("offline")
+            else:
+                traceback.print_exception(exc)
+                self._sync_finished("error", "Sync hit a problem. It will try again.")
+
+        self.run_quiet(syncer.fetch, fetched, failed)
+
+    def _sync_finished(self, state=None, message=""):
+        self._sync_busy = False
+        if self.syncer is not None and state:
+            self.syncer.state = state
+        if state == "mismatch":
+            self._sync_blocked = True
+        self._show_sync_state(message)
+        if self._sync_again:
+            self._sync_again = False
+            self.request_sync(delay=200)
+
+    def _show_sync_state(self, message=""):
+        label = getattr(self, "sync_label", None)
+        if label is None or not label.winfo_exists() or self.syncer is None:
+            return
+        state = self.syncer.state
+        colors = {"ok": ACCENT, "syncing": SUBTLE, "offline": GOLD, "paused": GOLD, "error": DANGER}
+        text = self.syncer.status_text()
+        if state == "paused":
+            text = "Sync paused: click to confirm your email"
+        elif state == "mismatch":
+            text = "Sync off: two different vaults"
+        label.configure(text=text, text_color=colors.get(state, SUBTLE))
+        if message and getattr(self, "status", None) is not None and self.status.winfo_exists():
+            self.status.configure(text=message, text_color=DANGER if state == "error" else MUTED)
+
+    def _sync_label_clicked(self, _e=None):
+        if self.syncer is not None and self.syncer.state in ("paused", "off"):
+            self.turn_on_recovery()
+        elif self.syncer is not None and self.syncer.state == "mismatch":
+            self._sync_blocked = False
+            self.request_sync(delay=0)
 
     # ========================================================= CREATE VAULT
 
@@ -1042,7 +1267,19 @@ class HushKeyApp(ctk.CTk):
     def _enter(self, v: Vault, addr: str):
         self.vault = v
         self.last_email = addr
+        self.syncer = None
+        if self.cloud.configured:
+            self.syncer = Syncer(self.cloud, addr, self._key_folder())
+            if self._last_session and self._last_session[0] == addr:
+                try:
+                    self.syncer.remember_session(self._last_session[1])
+                except Exception:
+                    traceback.print_exc()
+            self._last_session = None
+            v.on_change = self.request_sync
         self.show_main()
+        if self.syncer is not None:
+            self.request_sync(delay=300)
 
     # ============================================================ CODE SCREEN
 
@@ -1088,6 +1325,7 @@ class HushKeyApp(ctk.CTk):
 
             def work():
                 session = self.cloud.verify_code(addr, typed)
+                self._last_session = (addr, session)   # used to turn on sync
                 return on_verified(session)()
 
             def wrong(exc):
@@ -1228,11 +1466,14 @@ class HushKeyApp(ctk.CTk):
         self.theme_switch(top).pack(side="right", padx=(0, 12))
 
         self.recovery_btn = None
-        if self.cloud.configured and not self.vault.has_recovery:
+        sync_off = self.syncer is not None and not self.syncer.enabled and self.syncer._session is None
+        if self.cloud.configured and (not self.vault.has_recovery or sync_off):
             banner = ctk.CTkFrame(wrap, fg_color=GOLD_SOFT, corner_radius=12, border_width=1, border_color=GOLD)
             banner.pack(fill="x", pady=(16, 0))
-            ctk.CTkLabel(banner, text="Email recovery is off for this vault. Turn it on so you can reset "
-                                      "your master password by email if you ever forget it.",
+            ctk.CTkLabel(banner, text=("Turn on sync to use HushKey on all your computers"
+                                       + ("" if self.vault.has_recovery else
+                                          " and to reset your master password by email if you forget it")
+                                       + ". Only encrypted data is uploaded."),
                          font=font(13), text_color=TEXT, anchor="w", justify="left",
                          wraplength=640).pack(side="left", padx=16, pady=12, fill="x", expand=True)
             self.recovery_btn = ctk.CTkButton(banner, text="Turn on", command=self.turn_on_recovery,
@@ -1271,11 +1512,27 @@ class HushKeyApp(ctk.CTk):
                     font=font(11), text_color=SUBTLE)
                 self.remembered_label.pack(side="right", padx=(0, 6))
         ctk.CTkLabel(foot, text=f"v{__version__}", font=font(11), text_color=SUBTLE).pack(side="right", padx=10)
+        self._update_slot = ctk.CTkFrame(foot, fg_color="transparent")
+        self._update_slot.pack(side="right", padx=(0, 4))
+        self._show_update_link()
+        self.sync_label = None
+        if self.syncer is not None:
+            self.sync_label = ctk.CTkLabel(foot, text="", font=font(11, "bold"), text_color=SUBTLE, cursor="hand2")
+            self.sync_label.pack(side="right", padx=(0, 10))
+            self.sync_label.bind("<Button-1>", self._sync_label_clicked)
+            self._show_sync_state()
         self.refresh_rows()
+
+    def status_message(self, text, ok=False):
+        if getattr(self, "status", None) is not None and self.status.winfo_exists():
+            self.status.configure(text=text, text_color=ACCENT if ok else MUTED)
 
     def forget_device(self):
         self.vault.forget_device()
         self._forget_auto_signin(self.vault.email)
+        if self.syncer is not None:
+            self.syncer.forget()
+            self._show_sync_state()
         for name in ("forget_link", "remembered_label"):
             w = getattr(self, name, None)
             if w is not None and w.winfo_exists():
@@ -1500,17 +1757,100 @@ class HushKeyApp(ctk.CTk):
                 self._forget_auto_signin(self.vault.email)
             self.vault.lock()
         self.vault = None
+        if self.vault is not None:
+            self.vault.on_change = None
+        self.syncer = None
         for w in self.winfo_children():
             if isinstance(w, ctk.CTkToplevel):
                 w.destroy()
+        self.vault = None
         self.show_signin(notice or "You're signed out.", ok=True)
+        if forget and self.update_release is not None:
+            self.after(400, self.show_update_dialog)   # end of a session: offer the update
 
     def quit_app(self):
-        """Closing the window (X / red button) keeps 'Remember this device'."""
+        """Closing the window (X / red button) keeps 'Remember this device'.
+        If an update is downloaded, it installs now, so the next time you open
+        HushKey you're on the newest version."""
         self.wipe_clipboard()
+        self._save_window()
         if self.vault:
+            self.vault.on_change = None
             self.vault.lock()
+        if self.update_file and not self._installing:
+            self._start_install(relaunch=False)
         self.destroy()
+
+    # ------------------------------------------------------------ updates
+
+    def check_for_update(self):
+        def found(release):
+            if release is None:
+                return
+            self.update_release = release
+            self._show_update_link()
+            ok, reason = self.updater.can_install()
+            self.update_error = "" if ok else reason
+            self.show_update_dialog()
+            if ok:
+                self.run_quiet(lambda: self.updater.download(release), self._update_downloaded,
+                               self._update_failed)
+
+        self.run_quiet(self.updater.check, found, lambda exc: None)   # offline: try next launch
+
+    def _show_update_link(self):
+        """A small gold 'update' link on the current screen."""
+        slot = getattr(self, "_update_slot", None)
+        if self.update_release is None or slot is None or not slot.winfo_exists() or slot.winfo_children():
+            return
+        link_button(slot, f"HushKey v{self.update_release.version} is ready: update now",
+                    self.show_update_dialog, size=12, color=GOLD).pack()
+
+    def _update_downloaded(self, path):
+        self.update_file = path
+        dlg = self._update_dialog()
+        if dlg is not None:
+            dlg.downloaded()
+
+    def _update_failed(self, exc):
+        self.update_error = str(exc) if isinstance(exc, updater_mod.UpdateError) else \
+            "The update couldn't be downloaded. HushKey will try again next time."
+        dlg = self._update_dialog()
+        if dlg is not None:
+            dlg.failed(self.update_error)
+
+    def _update_dialog(self):
+        for w in self.winfo_children():
+            if isinstance(w, UpdateDialog) and w.winfo_exists():
+                return w
+        return None
+
+    def show_update_dialog(self):
+        if self.update_release is None:
+            return
+        dlg = self._update_dialog()
+        if dlg is None:
+            UpdateDialog(self, self.update_release)
+        else:
+            dlg.lift()
+
+    def update_now(self):
+        if not self.update_file:
+            return
+        if self.vault:
+            self.vault.on_change = None
+        self._start_install(relaunch=True)
+        self.wipe_clipboard()
+        self._save_window()
+        self.destroy()
+
+    def _start_install(self, relaunch):
+        try:
+            self._installing = True
+            self.updater.install(self.update_file, relaunch=relaunch)
+        except Exception:
+            self._installing = False
+            traceback.print_exc()
 
 
 # ==========================================================================
@@ -2025,6 +2365,145 @@ class ExportDialog(Dialog):
                                 "into the other app.", text_color=GOLD)
 
 
+class UpdateDialog(Dialog):
+    """'A new version of HushKey is ready': what's new + Update now / Later."""
+
+    def __init__(self, app, release):
+        super().__init__(app, "Update available", width=520)
+        self.release = release
+        c = self.inner
+        top = ctk.CTkFrame(c, fg_color="transparent")
+        top.pack(fill="x")
+        ctk.CTkLabel(top, text="", image=logo_image(48)).pack(side="left", padx=(0, 12))
+        names = ctk.CTkFrame(top, fg_color="transparent")
+        names.pack(side="left", fill="x", expand=True)
+        ctk.CTkLabel(names, text="A new version of HushKey is ready", font=font(18, "bold"),
+                     text_color=TEXT, anchor="w").pack(fill="x")
+        pills = ctk.CTkFrame(names, fg_color="transparent")
+        pills.pack(fill="x", pady=(4, 0))
+        ctk.CTkLabel(pills, text=f"  v{release.version}  ", font=font(12, "bold"), text_color=ACCENT_INK,
+                     fg_color=ACCENT, corner_radius=8, height=24).pack(side="left")
+        ctk.CTkLabel(pills, text=f"You have v{__version__}", font=font(12), text_color=MUTED).pack(
+            side="left", padx=(8, 0))
+
+        ctk.CTkLabel(c, text="WHAT'S NEW", font=font(11, "bold"), text_color=ACCENT, anchor="w").pack(
+            fill="x", pady=(16, 4))
+        notes = ctk.CTkTextbox(c, height=150, fg_color=RAISED, text_color=TEXT, corner_radius=10,
+                               font=font(13), wrap="word", border_width=0)
+        notes.pack(fill="x")
+        notes.insert("1.0", release.notes)
+        notes.configure(state="disabled")
+
+        self.state_label = ctk.CTkLabel(c, text="", font=font(12), text_color=SUBTLE, anchor="w",
+                                        justify="left", wraplength=440)
+        self.state_label.pack(fill="x", pady=(10, 0))
+
+        row = ctk.CTkFrame(c, fg_color="transparent")
+        row.pack(fill="x", pady=(12, 0))
+        self.now_btn = primary_button(row, "Update now", self.update_now, width=150, height=44)
+        self.now_btn.pack(side="right")
+        ghost_button(row, "Later", self.later, width=100, height=44).pack(side="right", padx=(0, 10))
+
+        if app.update_error and not app.update_file:
+            self.failed(app.update_error)
+        elif app.update_file:
+            self.downloaded()
+        else:
+            self.now_btn.configure(state="disabled", text="Downloading…")
+            self.state_label.configure(text="Downloading the update in the background…")
+        self.center()
+
+    def downloaded(self):
+        if not self.winfo_exists():
+            return
+        self.now_btn.configure(state="normal", text="Update now")
+        self.state_label.configure(
+            text="Ready. Update now (takes a few seconds and reopens HushKey), or click Later and "
+                 "it updates by itself the next time you close HushKey. Your vault is kept.",
+            text_color=MUTED)
+
+    def failed(self, reason):
+        if not self.winfo_exists():
+            return
+        self.state_label.configure(text=reason, text_color=GOLD)
+        self.now_btn.configure(state="normal", text="Download page", command=self.open_page)
+
+    def open_page(self):
+        import webbrowser
+        repo = getattr(self.app.updater, "repo", "")
+        webbrowser.open(f"https://github.com/{repo}/releases/latest" if repo else "https://github.com")
+        self.destroy()
+
+    def update_now(self):
+        self.now_btn.configure(state="disabled", text="Updating…")
+        self.update_idletasks()
+        self.app.update_now()
+
+    def later(self):
+        if self.app.update_file:
+            self.app.status_message("The update will install when you close HushKey.")
+        self.destroy()
+
+
+class CombineDialog(Dialog):
+    """Two different vaults (made separately on two computers) for one
+    account: combine them into the one that's already synced."""
+
+    def __init__(self, app, cloud_data):
+        super().__init__(app, "Combine your vaults", width=540)
+        self.cloud_data = cloud_data
+        c = self.inner
+        ctk.CTkLabel(c, text="Combine your vaults", font=font(20, "bold"), text_color=TEXT,
+                     anchor="w").pack(fill="x")
+        ctk.CTkLabel(c, text="Your HushKey account already has a vault from another computer, and this "
+                             "computer has a different one. To sync, HushKey will add the logins from this "
+                             "computer into your account's vault. Nothing is deleted.\n\n"
+                             "Enter the master password you use on your other computer. From now on it's "
+                             "your master password everywhere.",
+                     font=font(13), text_color=MUTED, anchor="w", justify="left",
+                     wraplength=470).pack(fill="x", pady=(6, 0))
+        self.pw = PasswordField(c, "Master password from your other computer", width=FIELD_WIDTH + 100)
+        self.pw.pack(fill="x", pady=(14, 0))
+        self.say = ctk.CTkLabel(c, text="", font=font(13), text_color=DANGER, anchor="w", justify="left",
+                                wraplength=470)
+        self.say.pack(fill="x", pady=(8, 0))
+        row = ctk.CTkFrame(c, fg_color="transparent")
+        row.pack(fill="x", pady=(10, 0))
+        self.ok = primary_button(row, "Combine", self.combine, width=140, height=44)
+        self.ok.pack(side="right")
+        ghost_button(row, "Not now", self.destroy, width=110, height=44).pack(side="right", padx=(0, 10))
+        self.pw.bind_enter(lambda _e: self.combine())
+        self.center()
+
+    def combine(self):
+        typed, app = self.pw.get(), self.app
+
+        def opened(other):
+            v = app.vault
+            if v is None or not v.is_unlocked:
+                return
+            remembered = app.settings.get("auto_signin_email") == v.email
+            copied = v.adopt(other)
+            other.lock()
+            if remembered:
+                app._remember_device(v, v.email)
+            app._sync_blocked = False
+            app.refresh_rows()
+            app.status_message(f"Vaults combined: {copied} login{'s' if copied != 1 else ''} added. "
+                               "Use your other computer's master password from now on.", ok=True)
+            app.request_sync(delay=0)
+            if self.winfo_exists():
+                self.destroy()
+
+        def failed(exc):
+            if self.winfo_exists():
+                self.ok.configure(state="normal", text="Combine")
+                self.say.configure(text=app._err_text(exc))
+
+        self.ok.configure(state="disabled", text="Combining…")
+        app.run_quiet(lambda: Vault.open_cloud_copy(self.cloud_data, typed), opened, failed)
+
+
 # ==========================================================================
 # Self-test: open every screen on a real machine, then close (used by GitHub)
 # ==========================================================================
@@ -2049,7 +2528,7 @@ def selftest() -> int:
     failures = []
     log_path = os.environ.get("HUSHKEY_SELFTEST_LOG")
     tmp = tempfile.mkdtemp(prefix="hushkey-selftest-")
-    app = HushKeyApp(data_dir=tmp, cloud=Cloud("", ""))
+    app = HushKeyApp(data_dir=tmp, cloud=Cloud("", ""), updater=updater_mod.Updater(repo=""))
 
     def report(exc, val, tb):
         failures.append("".join(traceback.format_exception(exc, val, tb)))
@@ -2104,6 +2583,15 @@ def selftest() -> int:
         lambda: app.open_export(),
         lambda: [w.destroy() for w in app.winfo_children() if isinstance(w, ctk.CTkToplevel)],
         lambda: app.open_change_master(),
+        lambda: [w.destroy() for w in app.winfo_children() if isinstance(w, ctk.CTkToplevel)],
+        lambda: setattr(app, "update_release", updater_mod.Release("9.9.9", "• Test notes", "u", "s")),
+        lambda: app.show_update_dialog(),
+        lambda: require(app._update_dialog() is not None, "update popup opens"),
+        lambda: app._update_dialog().destroy(),
+        lambda: CombineDialog(app, {}),
+        lambda: [w.destroy() for w in app.winfo_children() if isinstance(w, ctk.CTkToplevel)],
+        lambda: app._save_window(),
+        lambda: require(load_settings(tmp).get("window"), "window position saved"),
         lambda: app.sign_out(),
         lambda: app.quit_app(),
     ]

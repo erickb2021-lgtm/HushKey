@@ -186,6 +186,14 @@ def _subkeys(vault_key: bytes):
     return _hmac(vault_key, b"hushkey-entries"), _hmac(vault_key, b"hushkey-seal")
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+# Parts of the vault file that belong to THIS computer only and are never synced.
+LOCAL_ONLY = ("devices", "auto_signin", "seal")
+
+
 def compute_seal(data: dict, seal_key: bytes) -> str:
     """HMAC fingerprint over the WHOLE vault file (everything except the seal).
 
@@ -264,6 +272,7 @@ class Vault:
         self._entries_fernet: Fernet | None = None
         self._seal_key: bytes | None = None
         self._vault_key: bytes | None = None
+        self.on_change = None   # called after every save (the app uses it to sync)
 
     # ---- state ------------------------------------------------------------
 
@@ -335,8 +344,10 @@ class Vault:
             "kdf": {"name": "pbkdf2-sha256", "iterations": KDF_ITERATIONS, "salt": _b64e(salt)},
             "verifier": _b64e(verifier),
             "key_by_master": _fernet(unlock_key).encrypt(vault_key).decode("ascii"),
+            "master_changed": _now(),
             "recovery": None,
             "entries": [],
+            "deleted": {},
         }
         if recovery_secret is not None:
             rsalt = secrets.token_bytes(16)
@@ -344,6 +355,7 @@ class Vault:
             data["recovery"] = {
                 "salt": _b64e(rsalt),
                 "key_by_recovery": _fernet(rkey).encrypt(vault_key).decode("ascii"),
+                "changed": _now(),
             }
         entries_key, seal_key = _subkeys(vault_key)
         self._data, self._vault_key = data, vault_key
@@ -351,7 +363,9 @@ class Vault:
         self._save()
 
     def unlock(self, master: str) -> None:
-        data = self._read_file()
+        self._unlock_data(self._read_file(), master)
+
+    def _unlock_data(self, data: dict, master: str) -> None:
         try:
             kdf = data["kdf"]
             salt, iterations = _b64d(kdf["salt"]), int(kdf["iterations"])
@@ -393,6 +407,7 @@ class Vault:
         self._data["kdf"] = {"name": "pbkdf2-sha256", "iterations": KDF_ITERATIONS, "salt": _b64e(salt)}
         self._data["verifier"] = _b64e(verifier)
         self._data["key_by_master"] = _fernet(unlock_key).encrypt(self._vault_key).decode("ascii")
+        self._data["master_changed"] = _now()
 
     # ---- recovery ---------------------------------------------------------
 
@@ -406,6 +421,7 @@ class Vault:
         self._data["recovery"] = {
             "salt": _b64e(rsalt),
             "key_by_recovery": _fernet(rkey).encrypt(self._vault_key).decode("ascii"),
+            "changed": _now(),
         }
         self._save()
 
@@ -540,6 +556,11 @@ class Vault:
             except OSError:
                 pass
         _atomic_write_json(self.path, self._data)
+        if self.on_change is not None:
+            try:
+                self.on_change()
+            except Exception:
+                pass
 
     def list_titles(self) -> list[tuple[str, str]]:
         """(id, client name) for every entry, A-Z. Usernames/passwords stay encrypted."""
@@ -591,6 +612,8 @@ class Vault:
     def delete(self, entry_id: str) -> None:
         self._require_unlocked()
         self._data["entries"].remove(self._find(entry_id))
+        # remember the deletion so syncing doesn't bring it back from another computer
+        self._data.setdefault("deleted", {})[entry_id] = _now()
         self._save()
 
     @property
@@ -656,6 +679,133 @@ class Vault:
         except VaultError:
             raise VaultError("That file isn't a HushKey backup, or it's damaged.")
         return v
+
+
+# --------------------------------------------------------------------------
+# Sync helpers (zero-knowledge: everything uploaded is already encrypted)
+# --------------------------------------------------------------------------
+
+def merge_vaults(local: dict, cloud: dict) -> dict:
+    """Combine two copies of the SAME vault, without decrypting anything.
+
+    - Logins are matched by id; the most recently edited copy wins.
+    - A deletion on either computer wins over an older edit.
+    - The master password block (and recovery block) comes from whichever
+      copy changed it last.
+    Local-only parts (remembered devices, seal) are left out."""
+    merged = {k: v for k, v in local.items() if k not in LOCAL_ONLY}
+    if (cloud.get("master_changed") or "") > (local.get("master_changed") or ""):
+        for k in ("kdf", "verifier", "key_by_master", "master_changed"):
+            if k in cloud:
+                merged[k] = cloud[k]
+    lr, cr = local.get("recovery") or {}, cloud.get("recovery") or {}
+    if cr and (not lr or (cr.get("changed") or "") > (lr.get("changed") or "")):
+        merged["recovery"] = cr
+    deleted = dict(local.get("deleted") or {})
+    for eid, when in (cloud.get("deleted") or {}).items():
+        if when > deleted.get(eid, ""):
+            deleted[eid] = when
+    by_id, order = {}, []
+    for e in list(local.get("entries") or []) + list(cloud.get("entries") or []):
+        old = by_id.get(e["id"])
+        if old is None:
+            order.append(e["id"])
+            by_id[e["id"]] = e
+        elif (e.get("updated") or "") > (old.get("updated") or ""):
+            by_id[e["id"]] = e
+    merged["entries"] = [by_id[i] for i in order
+                         if deleted.get(i, "") < (by_id[i].get("updated") or "")]
+    merged["deleted"] = deleted
+    return merged
+
+
+def _comparable(data: dict) -> str:
+    return json.dumps({k: v for k, v in data.items() if k not in LOCAL_ONLY}, sort_keys=True)
+
+
+def _vault_sync_methods():
+    """Added to Vault below (kept here so the sync code reads in one place)."""
+
+    def cloud_payload(self) -> str:
+        """The vault as uploaded: encrypted logins, without this computer's
+        private bits, sealed so the server can't change anything unnoticed."""
+        self._require_unlocked()
+        body = {k: v for k, v in self._data.items() if k not in LOCAL_ONLY}
+        body["seal"] = compute_seal(body, self._seal_key)
+        return json.dumps(body, sort_keys=True, separators=(",", ":"))
+
+    def same_vault(self, cloud_data: dict) -> bool:
+        self._require_unlocked()
+        return cloud_data.get("vault_id") == self._data.get("vault_id")
+
+    def apply_cloud(self, cloud_data: dict):
+        """Merge a downloaded copy into this one. Returns (changed_here,
+        needs_upload). Refuses copies that fail the tamper check."""
+        self._require_unlocked()
+        if not self.same_vault(cloud_data):
+            raise VaultError("The synced vault belongs to a different HushKey vault.")
+        expected = compute_seal({k: v for k, v in cloud_data.items() if k != "seal"}, self._seal_key)
+        if not hmac.compare_digest(expected, str(cloud_data.get("seal", ""))):
+            raise TamperError("Security warning: the synced copy failed its tamper check, "
+                              "so HushKey ignored it.")
+        merged = merge_vaults(self._data, cloud_data)
+        changed_here = _comparable(merged) != _comparable(self._data)
+        needs_upload = _comparable(merged) != _comparable(cloud_data)
+        if changed_here:
+            for k in LOCAL_ONLY:
+                if k in self._data and k != "seal":
+                    merged[k] = self._data[k]
+            self._data = merged
+            callback, self.on_change = self.on_change, None   # don't trigger another sync
+            try:
+                self._save()
+            finally:
+                self.on_change = callback
+        return changed_here, needs_upload
+
+    @classmethod
+    def save_cloud_copy(cls, email: str, folder, cloud_data: dict) -> "Vault":
+        """New computer: store the downloaded (still encrypted) vault here.
+        It opens with the master password like any vault."""
+        v = cls(email, folder)
+        if v.exists():
+            raise VaultError("There's already a vault for this email on this computer.")
+        if cloud_data.get("app") != APP_NAME or cloud_data.get("version") != FILE_VERSION:
+            raise VaultError("The synced vault is from a different HushKey version.")
+        _atomic_write_json(v.path, cloud_data)
+        return v
+
+    @classmethod
+    def open_cloud_copy(cls, cloud_data: dict, master: str) -> "Vault":
+        """Unlock a downloaded vault in memory only (to combine two vaults)."""
+        v = cls("cloud-copy@hushkey.local", tempfile.gettempdir())
+        v.path = None
+        v._unlock_data(dict(cloud_data), master)
+        return v
+
+    def adopt(self, other: "Vault") -> int:
+        """Combine two DIFFERENT vaults (e.g. made separately on two computers):
+        copy this vault's logins into `other`, then become `other` here.
+        Returns how many logins were copied over."""
+        self._require_unlocked()
+        existing = {(t.lower(), u.lower()) for t, u in other.existing_keys()}
+        items = [e for e in self.all_entries()
+                 if (e["title"].lower(), e["username"].lower()) not in existing]
+        data = {k: v for k, v in other._data.items() if k not in LOCAL_ONLY}
+        entries_key, seal_key = _subkeys(other._vault_key)
+        self._data, self._vault_key = data, other._vault_key
+        self._entries_fernet, self._seal_key = _fernet(entries_key), seal_key
+        for it in items:
+            self._data["entries"].append(self._encrypt_entry(
+                it["title"], it["username"], it["password"], it.get("icon") or "", url=it.get("url") or ""))
+        self._save()
+        return len(items)
+
+    return cloud_payload, same_vault, apply_cloud, save_cloud_copy, open_cloud_copy, adopt
+
+
+(Vault.cloud_payload, Vault.same_vault, Vault.apply_cloud, Vault.save_cloud_copy,
+ Vault.open_cloud_copy, Vault.adopt) = _vault_sync_methods()
 
 
 class RecoveryReset:

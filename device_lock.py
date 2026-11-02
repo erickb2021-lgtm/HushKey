@@ -24,8 +24,8 @@ import sys
 SERVICE = "HushKey"
 
 
-def _name(email: str) -> str:
-    return "autosignin-" + hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()[:20]
+def _name(email: str, kind: str = "autosignin") -> str:
+    return kind + "-" + hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()[:20]
 
 
 # ---- Windows: DPAPI ---------------------------------------------------------
@@ -59,8 +59,8 @@ def _file_path(folder: str, name: str) -> str:
 
 # ---- public functions ---------------------------------------------------------
 
-def save(email: str, secret: bytes, folder: str) -> None:
-    name = _name(email)
+def save(email: str, secret: bytes, folder: str, kind: str = "autosignin") -> None:
+    name = _name(email, kind)
     if sys.platform == "darwin":
         subprocess.run(["security", "add-generic-password", "-U", "-a", name, "-s", SERVICE,
                         "-w", base64.b64encode(secret).decode("ascii")],
@@ -77,9 +77,9 @@ def save(email: str, secret: bytes, folder: str) -> None:
         pass
 
 
-def load(email: str, folder: str):
+def load(email: str, folder: str, kind: str = "autosignin"):
     """The saved secret, or None if there isn't one (or it can't be read)."""
-    name = _name(email)
+    name = _name(email, kind)
     try:
         if sys.platform == "darwin":
             out = subprocess.run(["security", "find-generic-password", "-a", name, "-s", SERVICE, "-w"],
@@ -97,8 +97,8 @@ def load(email: str, folder: str):
         return None
 
 
-def delete(email: str, folder: str) -> None:
-    name = _name(email)
+def delete(email: str, folder: str, kind: str = "autosignin") -> None:
+    name = _name(email, kind)
     try:
         if sys.platform == "darwin":
             subprocess.run(["security", "delete-generic-password", "-a", name, "-s", SERVICE],

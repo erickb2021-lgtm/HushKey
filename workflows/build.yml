@@ -45,9 +45,12 @@ jobs:
           if [ "${{ github.event_name }}" = "release" ]; then
             VER="${{ github.event.release.tag_name }}"
             VER="${VER#v}"; VER="${VER#V}"
-            printf '__version__ = "%s"\n' "$VER" > version.py
+          else
+            VER=$(python -c "from version import __version__; print(__version__)")
           fi
-          VER=$(python -c "from version import __version__; print(__version__)")
+          # the version shown in the app + the repo automatic updates come from
+          printf '__version__ = "%s"\n__repo__ = "%s"\n' "$VER" "${{ github.repository }}" > version.py
+          cat version.py
           echo "APP_VERSION=$VER" >> "$GITHUB_ENV"
           echo "Building HushKey $VER"
 

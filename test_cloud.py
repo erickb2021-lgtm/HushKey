@@ -14,10 +14,15 @@ class FakeSupabase:
     def __init__(self):
         self.sent = []          # emails a code was sent to
         self.rows = {}          # (user_id, vault_id) -> secret
+        self.vaults = {}        # user_id -> {"vault_id", "data", "rev"}
+        self.refresh_tokens = {}  # token -> email (each works once, like Supabase)
         self.requests = []
+        self.offline = False
 
     def __call__(self, req):
         self.requests.append(req)
+        if self.offline:
+            raise urllib.error.URLError("offline")
         path = req.full_url.split(".co", 1)[1]
         body = json.loads(req.data) if req.data else None
         token = req.get_header("Authorization")
@@ -25,9 +30,24 @@ class FakeSupabase:
             self.sent.append(body["email"])
             return self._ok({})
         if path == "/auth/v1/verify":
-            if body["token"] != "123456":
+            if body["token"] not in ("123456", "12345678"):
                 return self._err(403, {"msg": "Token has expired or is invalid"})
-            return self._ok({"access_token": "tok-" + body["email"], "user": {"id": "uid-" + body["email"]}})
+            return self._ok(self._new_session(body["email"]))
+        if path.startswith("/auth/v1/token"):
+            email = self.refresh_tokens.pop(body.get("refresh_token"), None)
+            if email is None:
+                return self._err(400, {"error_description": "Invalid Refresh Token"})
+            return self._ok(self._new_session(email))
+        if path.startswith("/rest/v1/vaults"):
+            if not token:
+                return self._err(401, {"message": "no auth"})
+            uid = "uid-" + token.split("tok-", 1)[1]
+            if req.get_method() == "POST":
+                assert body["user_id"] == uid
+                self.vaults[uid] = {"vault_id": body["vault_id"], "data": body["data"], "rev": body["rev"]}
+                return self._ok(None)
+            row = self.vaults.get(uid)
+            return self._ok([row] if row else [])
         if path.startswith("/rest/v1/recovery_keys"):
             if not token:
                 return self._err(401, {"message": "no auth"})
@@ -40,6 +60,13 @@ class FakeSupabase:
             secret = self.rows.get((uid, vault_id))
             return self._ok([{"secret": secret}] if secret else [])
         return self._err(404, {})
+
+    def _new_session(self, email):
+        import secrets
+        rt = "rt-" + secrets.token_hex(8)
+        self.refresh_tokens[rt] = email
+        return {"access_token": "tok-" + email, "refresh_token": rt, "expires_in": 3600,
+                "user": {"id": "uid-" + email}}
 
     @staticmethod
     def _ok(payload):
