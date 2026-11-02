@@ -474,8 +474,56 @@ class Vault:
 
     def forget_device(self) -> None:
         self._require_unlocked()
-        if self._data.get("devices", {}).pop(device_id(), None) is not None:
+        changed = self._data.get("devices", {}).pop(device_id(), None) is not None
+        changed = self._data.pop("auto_signin", None) is not None or changed
+        if changed:
             self._save()
+
+    # ---- stay signed in ("Remember this device for 30 days") ----------------
+
+    def enable_auto_signin(self, days: int = REMEMBER_DAYS) -> bytes:
+        """Lock one more copy of the vault key with a random device key and
+        return that key, to be kept in Windows' protected storage or the Mac
+        Keychain (device_lock.py). Tied to this computer, expires after
+        `days`, and the expiry is inside the tamper-proof seal."""
+        self._require_unlocked()
+        device_key = secrets.token_bytes(32)
+        self._data["auto_signin"] = {
+            "device": device_id(),
+            "until": int(time.time() + days * 86400),
+            "key_by_device": _fernet(_hmac(device_key, b"hushkey-auto-signin")).encrypt(
+                self._vault_key).decode("ascii"),
+        }
+        self._save()
+        return device_key
+
+    def disable_auto_signin(self) -> None:
+        self._require_unlocked()
+        if self._data.pop("auto_signin", None) is not None:
+            self._save()
+
+    @property
+    def auto_signin_until(self) -> int:
+        """When stay-signed-in ends (0 = off)."""
+        data = self._data if self._data is not None else self._read_file()
+        info = data.get("auto_signin") or {}
+        return int(info.get("until", 0)) if info.get("device") == device_id() else 0
+
+    def unlock_with_device_key(self, device_key: bytes) -> None:
+        """Open the vault without the master password, only on the same
+        computer, within the 30 days, and only if the file wasn't tampered with."""
+        data = self._read_file()
+        info = data.get("auto_signin")
+        if not info or info.get("device") != device_id():
+            raise VaultError("This computer isn't remembered. Please sign in.")
+        if int(info.get("until", 0)) <= time.time():
+            raise VaultError("It's been 30 days, so for your safety please sign in again.")
+        try:
+            vault_key = _fernet(_hmac(device_key, b"hushkey-auto-signin")).decrypt(
+                info["key_by_device"].encode("ascii"))
+        except (InvalidToken, KeyError, AttributeError):
+            raise VaultError("This computer isn't remembered anymore. Please sign in.")
+        self._open_with_key(data, vault_key)
 
     def _find(self, entry_id: str) -> dict:
         for e in self._data["entries"]:
@@ -626,6 +674,7 @@ class RecoveryReset:
             raise VaultError("This reset was cancelled. Start again.")
         check_new_master(new_master, confirm)
         self._unlocked._set_master(new_master)
+        self._unlocked._data.pop("auto_signin", None)  # after a reset, every device signs in again
         self._unlocked._save()
         self.cancel()
 

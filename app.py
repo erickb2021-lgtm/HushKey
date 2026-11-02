@@ -20,6 +20,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 import brand_icons
+import device_lock
 import importer
 from brand import draw_logo
 from cloud import Cloud, CloudError
@@ -647,7 +648,58 @@ class HushKeyApp(ctk.CTk):
         if seen != __version__:
             self.settings["last_version"] = __version__
             save_settings(self.settings, self.data_dir)
-        self.show_signin(notice, ok=True)
+        self.stay_var = None
+        self._try_auto_signin(notice)
+
+    # ------------------------------------------------------------ stay signed in
+
+    def _key_folder(self):
+        from vault import default_data_dir
+        return self.data_dir or default_data_dir()
+
+    def _try_auto_signin(self, notice=""):
+        """If this computer is remembered, open the vault without asking for
+        the master password (until the 30 days are up or the user signs out)."""
+        addr = self.settings.get("auto_signin_email")
+        if not addr:
+            return self.show_signin(notice, ok=True)
+        v = self._vault_for(addr)
+        key = device_lock.load(addr, self._key_folder())
+        try:
+            if key is None or not v.exists():
+                raise VaultError("This computer isn't remembered anymore. Please sign in.")
+            v.unlock_with_device_key(key)
+        except VaultError as exc:
+            self._forget_auto_signin(addr)
+            self.last_email = addr
+            return self.show_signin((notice + " " if notice else "") + str(exc), ok=False)
+        self._enter(v, addr)
+        until = time.strftime("%b %d", time.localtime(v.auto_signin_until))
+        self.status.configure(text=(notice + " " if notice else "") +
+                              f"Signed in automatically. This computer is remembered until {until}.",
+                              text_color=ACCENT)
+
+    def _remember_device(self, v: Vault, addr: str):
+        """'Remember this device for 30 days': skip email codes AND stay
+        signed in when the app is closed and opened again."""
+        try:
+            v.remember_device()
+            key = v.enable_auto_signin()
+            device_lock.save(addr, key, self._key_folder())
+            self.settings["auto_signin_email"] = addr
+            save_settings(self.settings, self.data_dir)
+        except Exception:
+            traceback.print_exc()
+            try:
+                v.disable_auto_signin()
+            except Exception:
+                pass
+
+    def _forget_auto_signin(self, addr):
+        device_lock.delete(addr, self._key_folder())
+        if self.settings.get("auto_signin_email") == addr:
+            self.settings.pop("auto_signin_email", None)
+            save_settings(self.settings, self.data_dir)
 
     # ------------------------------------------------------------ theme
 
@@ -759,7 +811,7 @@ class HushKeyApp(ctk.CTk):
 
     def _tick(self):
         if self.vault and self.vault.is_unlocked and time.time() - self.last_activity > AUTO_LOCK_SECONDS:
-            self.sign_out("Signed out after 5 minutes of no activity.")
+            self.sign_out("Locked after 5 minutes of no activity.", forget=False)
         if self.revealed_id and self.revealed_id in self.rows:
             left = int(self.reveal_deadline - time.time())
             if left <= 0:
@@ -802,6 +854,11 @@ class HushKeyApp(ctk.CTk):
         link_button(link_row, "Forgot master password?",
                     lambda: self.show_forgot_email(email.get())).pack(side="right")
 
+        stay_box, self.stay_var = checkbox(c, "Remember this device for 30 days", checked=False)
+        stay_box.pack(fill="x", pady=(6, 0))
+        ctk.CTkLabel(c, text="Stay signed in when you close HushKey. Clicking Sign out turns it off.",
+                     font=font(11), text_color=SUBTLE, anchor="w").pack(fill="x", padx=(30, 0))
+
         say = self._message(c)
         if notice:
             say(notice, ok)
@@ -823,7 +880,8 @@ class HushKeyApp(ctk.CTk):
             def ok_cb(_):
                 self.failed = 0
                 self.last_email = addr
-                self._after_password(v, addr, say, unlock_btn)
+                self._after_password(v, addr, say, unlock_btn,
+                                     stay=bool(self.stay_var is not None and self.stay_var.get()))
 
             def err_cb(exc):
                 if isinstance(exc, WrongPassword):
@@ -852,10 +910,12 @@ class HushKeyApp(ctk.CTk):
         ctk.CTkLabel(c, text=f"v{__version__}", font=font(11), text_color=SUBTLE).pack(pady=(4, 0))
         (pw.focus() if self.last_email else email.focus_set())
 
-    def _after_password(self, v: Vault, addr: str, say, button):
+    def _after_password(self, v: Vault, addr: str, say, button, stay=False):
         """Right password. On a computer that isn't remembered, also ask for
         a code sent to the user's email (two-step sign-in)."""
         if not self.cloud.configured or v.is_device_remembered():
+            if stay:
+                self._remember_device(v, addr)
             return self._enter(v, addr)
 
         def cancel():
@@ -864,7 +924,7 @@ class HushKeyApp(ctk.CTk):
 
         def done(_):
             if self.remember_var is not None and self.remember_var.get():
-                v.remember_device()
+                self._remember_device(v, addr)
             self._enter(v, addr)
 
         def failed(exc):
@@ -877,7 +937,7 @@ class HushKeyApp(ctk.CTk):
                         "This computer isn't remembered yet, so we emailed you a 8-digit code.",
                         # a correct code also switches on email recovery for older vaults
                         on_verified=lambda s: (lambda: self._ensure_recovery(v, s)),
-                        on_done=done, on_cancel=cancel, remember=True),
+                        on_done=done, on_cancel=cancel, remember=True, remember_default=stay),
                     failed, button, "Sending code…")
 
     def _ensure_recovery(self, v: Vault, session):
@@ -962,7 +1022,7 @@ class HushKeyApp(ctk.CTk):
 
             def done(_):
                 if self.remember_var is not None and self.remember_var.get():
-                    v.remember_device()
+                    self._remember_device(v, addr)
                 self._enter(v, addr)
 
             self.run_bg(lambda: self.cloud.send_code(addr),
@@ -987,7 +1047,7 @@ class HushKeyApp(ctk.CTk):
     # ============================================================ CODE SCREEN
 
     def show_code(self, addr, title, intro, on_verified, on_done, on_cancel,
-                  done_text="Checking…", step="", remember=False):
+                  done_text="Checking…", step="", remember=False, remember_default=True):
         """Shared 'enter the 8-digit code' screen.
 
         The code is checked by the email service: it must be the exact code
@@ -1008,7 +1068,8 @@ class HushKeyApp(ctk.CTk):
 
         self.remember_var = None
         if remember:
-            box, self.remember_var = checkbox(c, f"Remember this device for {REMEMBER_DAYS} days")
+            box, self.remember_var = checkbox(c, f"Remember this device for {REMEMBER_DAYS} days "
+                                                 "(stay signed in)", checked=remember_default)
             box.pack(fill="x", pady=(6, 4))
 
         resend_row = ctk.CTkFrame(c, fg_color="transparent")
@@ -1200,18 +1261,27 @@ class HushKeyApp(ctk.CTk):
         self.status = ctk.CTkLabel(foot, text="Everything stays hidden until you click a login.",
                                    font=font(12), text_color=SUBTLE, anchor="w")
         self.status.pack(side="left", fill="x", expand=True)
-        if self.cloud.configured and self.vault.is_device_remembered():
+        until = self.vault.auto_signin_until
+        if until > time.time() or (self.cloud.configured and self.vault.is_device_remembered()):
             self.forget_link = link_button(foot, "Forget this device", self.forget_device, size=12, color=MUTED)
             self.forget_link.pack(side="right")
+            if until > time.time():
+                self.remembered_label = ctk.CTkLabel(
+                    foot, text="Remembered until " + time.strftime("%b %d", time.localtime(until)),
+                    font=font(11), text_color=SUBTLE)
+                self.remembered_label.pack(side="right", padx=(0, 6))
         ctk.CTkLabel(foot, text=f"v{__version__}", font=font(11), text_color=SUBTLE).pack(side="right", padx=10)
         self.refresh_rows()
 
     def forget_device(self):
         self.vault.forget_device()
-        if getattr(self, "forget_link", None) is not None and self.forget_link.winfo_exists():
-            self.forget_link.destroy()
-        self.status.configure(text="This computer will ask for an email code at the next sign-in.",
-                              text_color=ACCENT)
+        self._forget_auto_signin(self.vault.email)
+        for name in ("forget_link", "remembered_label"):
+            w = getattr(self, name, None)
+            if w is not None and w.winfo_exists():
+                w.destroy()
+        self.status.configure(text="This computer is forgotten: next time you'll sign in with your "
+                                   "master password (and an email code).", text_color=ACCENT)
 
     PAGE_SIZE = 50   # logins drawn at once; "Show more" draws the next 50
     BATCH = 10       # logins drawn per step, so the window never freezes
@@ -1416,9 +1486,18 @@ class HushKeyApp(ctk.CTk):
 
     # ------------------------------------------------------------ sign out
 
-    def sign_out(self, notice=""):
+    def sign_out(self, notice="", forget=True):
+        """Sign out. The Sign out button also turns off 'Remember this device',
+        so the next time HushKey opens it asks for the master password.
+        (Closing the window, or the 5-minute auto-lock, does not.)"""
         self.wipe_clipboard()
         if self.vault:
+            if forget and self.vault.is_unlocked:
+                try:
+                    self.vault.disable_auto_signin()
+                except VaultError:
+                    pass
+                self._forget_auto_signin(self.vault.email)
             self.vault.lock()
         self.vault = None
         for w in self.winfo_children():
@@ -1427,6 +1506,7 @@ class HushKeyApp(ctk.CTk):
         self.show_signin(notice or "You're signed out.", ok=True)
 
     def quit_app(self):
+        """Closing the window (X / red button) keeps 'Remember this device'."""
         self.wipe_clipboard()
         if self.vault:
             self.vault.lock()
