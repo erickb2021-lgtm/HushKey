@@ -42,7 +42,7 @@ def main():
             lines.append(f'        "{data[i:i + 120]}"')
         lines.append("    ),")
     lines.append("}")
-    out = os.path.join(ROOT, "brand_data.py")
+    out = os.path.join(ROOT, "app", "brand_data.py")
     with open(out, "w", encoding="ascii") as f:
         f.write("\n".join(lines) + "\n")
     print("wrote", os.path.abspath(out), os.path.getsize(out) // 1024, "KB")
