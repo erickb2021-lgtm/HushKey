@@ -1,8 +1,8 @@
 # Builds HushKey for Windows and Mac on GitHub's own computers.
 #
-# - Publish a Release on the GitHub website (Releases -> Draft a new release):
-#   this builds both apps and attaches HushKey-Windows.exe and HushKey-Mac.zip
-#   to that release, which is what the README's download buttons point to.
+# - Publish a Release on the GitHub website (Releases -> Draft a new release,
+#   tag like v2.0.1): builds both apps and attaches HushKey-Windows.exe and
+#   HushKey-Mac.zip to that release (what the README's download buttons use).
 # - Every push to main: builds both apps as a check (Actions tab -> run ->
 #   "Artifacts" at the bottom), but doesn't publish anything.
 # - You can also start it by hand from the Actions tab ("Run workflow").
@@ -30,8 +30,6 @@ jobs:
           - os: macos-latest
             label: Mac
     runs-on: ${{ matrix.os }}
-    env:
-      APP_VERSION: ${{ github.event.release.tag_name || '0.0.0' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -40,21 +38,42 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The version shown in the app = the release tag (v2.0.1 -> 2.0.1).
+      - name: Set version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VER="${{ github.event.release.tag_name }}"
+            VER="${VER#v}"; VER="${VER#V}"
+          else
+            VER=$(python -c "import sys; sys.path.insert(0, 'app'); from version import __version__; print(__version__)")
+          fi
+          # the version shown in the app + the repo automatic updates come from
+          printf '__version__ = "%s"\n__repo__ = "%s"\n' "$VER" "${{ github.repository }}" > app/version.py
+          cat app/version.py
+          echo "APP_VERSION=$VER" >> "$GITHUB_ENV"
+          echo "Building HushKey $VER"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run tests
-        run: python -m unittest -v
+      - name: Run security tests
+        run: python -m unittest discover -s tests -v
+
+      # Opens every screen of the app on this machine, then closes it.
+      # If any screen crashes, the build stops here and nothing is published.
+      - name: Check every screen opens
+        run: python app/app.py --selftest
+        timeout-minutes: 3
 
       # ---------------- Windows ----------------
       # Antivirus false alarms mostly hit PyInstaller's shared, pre-built
       # "bootloader" and single-file .exe programs that unpack themselves. So:
-      #   1. compile our own bootloader instead of using the shared one
-      #   2. build a normal folder app (not --onefile self-extracting)
-      #   3. fill in the .exe's name/version details
-      #   4. wrap it in a standard Inno Setup installer
+      # compile our own bootloader, build a normal folder app, fill in the
+      # .exe's details (publisher: Erick Bardales), and wrap it in a standard
+      # Inno Setup installer.
       - name: Install PyInstaller (own bootloader)
         if: matrix.label == 'Windows'
         shell: pwsh
@@ -73,16 +92,28 @@ jobs:
         run: |
           python packaging/make_version_info.py $env:APP_VERSION
           pyinstaller --noconfirm --clean --windowed --noupx --name HushKey `
-            --version-file packaging/version_info.txt app.py
+            --icon assets/HushKey.ico --add-data "assets;assets" `
+            --collect-data customtkinter `
+            --version-file packaging/version_info.txt --paths app app/app.py
           if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Check the finished Windows app opens
+        if: matrix.label == 'Windows'
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $log = "$env:RUNNER_TEMP\selftest.log"
+          $env:HUSHKEY_SELFTEST_LOG = $log
+          $p = Start-Process -FilePath "dist\HushKey\HushKey.exe" -ArgumentList "--selftest" -Wait -PassThru
+          if (Test-Path $log) { Get-Content $log }
+          if ($p.ExitCode -ne 0) { Write-Error "Packaged app self-test failed"; exit 1 }
 
       - name: Build Windows installer
         if: matrix.label == 'Windows'
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
-          $ver = $env:APP_VERSION.TrimStart('v','V')
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" packaging\installer.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:APP_VERSION" packaging\installer.iss
           if ($LASTEXITCODE -ne 0) { exit 1 }
           $hash = (Get-FileHash dist\HushKey-Windows.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  HushKey-Windows.exe" | Out-File -Encoding ascii dist\HushKey-Windows.exe.sha256.txt
@@ -92,11 +123,28 @@ jobs:
         if: matrix.label == 'Mac'
         run: |
           pip install pyinstaller
-          VER="${APP_VERSION#v}"
           pyinstaller --noconfirm --clean --windowed --name HushKey \
-            --osx-bundle-identifier com.hushkey.app app.py
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" dist/HushKey.app/Contents/Info.plist || true
+            --icon assets/HushKey.icns --add-data "assets:assets" \
+            --collect-data customtkinter \
+            --paths app --osx-bundle-identifier com.erickbardales.hushkey app/app.py
+          PLIST=dist/HushKey.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Add :NSHumanReadableCopyright string Copyright (c) 2026 Erick Bardales" "$PLIST" || true
           codesign --force --deep --sign - dist/HushKey.app
+
+      - name: Check the finished Mac app opens
+        if: matrix.label == 'Mac'
+        timeout-minutes: 3
+        run: |
+          export HUSHKEY_SELFTEST_LOG="$RUNNER_TEMP/selftest.log"
+          status=0
+          dist/HushKey.app/Contents/MacOS/HushKey --selftest || status=$?
+          cat "$HUSHKEY_SELFTEST_LOG" || true
+          exit $status
+
+      - name: Zip Mac app
+        if: matrix.label == 'Mac'
+        run: |
           cd dist
           ditto -c -k --keepParent HushKey.app HushKey-Mac.zip
           shasum -a 256 HushKey-Mac.zip > HushKey-Mac.zip.sha256.txt
