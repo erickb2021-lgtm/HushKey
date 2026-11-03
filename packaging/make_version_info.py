@@ -10,7 +10,7 @@ import sys
 
 PUBLISHER = "Erick Bardales"
 
-version = (sys.argv[1] if len(sys.argv) > 1 else "2.0.11").lstrip("vV")
+version = (sys.argv[1] if len(sys.argv) > 1 else "2.0.12").lstrip("vV")
 parts = [int(p) if p.isdigit() else 0 for p in version.split(".")[:4]]
 parts += [0] * (4 - len(parts))
 ver_tuple = tuple(parts)

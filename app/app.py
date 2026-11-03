@@ -123,6 +123,53 @@ def apply_accent(key):
     ACCENT_SOFT_HOVER = (_mix("#F7F4EC", light, 0.2), _mix("#0E1116", dark, 0.2))
 
 
+def _light_color(hexcolor):
+    r, g, b = (int(hexcolor.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    return 0.299 * r + 0.587 * g + 0.114 * b > 186
+
+
+_toggle_cache = {}
+
+
+def toggle_image(on):
+    """An on/off switch drawn the same on every computer: on = your accent color with the
+    knob on the right, off = grey with the knob on the left. The knob always contrasts."""
+    key = (on, ACCENT, STYLE)
+    if key not in _toggle_cache:
+        from PIL import Image, ImageDraw
+        knobs, tracks = switch_colors()
+
+        def draw(i):
+            w, h, k = 46, 26, 4
+            img = Image.new("RGBA", (w * k, h * k), (0, 0, 0, 0))
+            d = ImageDraw.Draw(img)
+            track = ACCENT[i] if on else tracks[i]
+            r = h * k // 2 if STYLE == "basic" else 3 * k
+            d.rounded_rectangle([0, 0, w * k - 1, h * k - 1], radius=r, fill=track)
+            pad = 3 * k
+            size = h * k - 2 * pad
+            x = (w * k - pad - size) if on else pad
+            knob = knobs[i] if on else "#FFFFFF"
+            if STYLE == "basic":
+                d.ellipse([x, pad, x + size, pad + size], fill=knob)
+            else:
+                d.rectangle([x, pad, x + size, pad + size], fill=knob)
+            return img.resize((w * 2, h * 2), Image.LANCZOS)
+        _toggle_cache[key] = ctk.CTkImage(light_image=draw(0), dark_image=draw(1), size=(46, 26))
+    return _toggle_cache[key]
+
+
+def switch_colors():
+    """(knob, off-track) colors that always stand out from the on-track (your accent color),
+    from the off-track, and from the card behind the switch, in both themes."""
+    knobs, tracks = [], []
+    for accent, off in ((ACCENT[0], "#B5AD9B"), (ACCENT[1], "#4A5262")):
+        knob = "#1B1F24" if _light_color(accent) else "#FFFFFF"
+        knobs.append(knob)
+        tracks.append(off if knob == "#FFFFFF" else "#D9DEE7")
+    return tuple(knobs), tuple(tracks)
+
+
 def health_color(score, dark=True):
     i = 1 if dark else 0
     if score >= 90:
@@ -201,27 +248,76 @@ def _font_file(name):
         return resource(os.path.join("assets", "fonts", name))
 
 
-def load_fonts(root):
-    """Pick the app font once the window exists: Poppins if it loaded,
-    otherwise a good built-in font (Avenir Next on Mac, Segoe UI on Windows)."""
-    global FAMILY
+# Fonts you can pick in Settings > Appearance (all free, OFL license, bundled)
+FONT_CHOICES = [("poppins", "Poppins", "Poppins"), ("dmsans", "DM Sans", "DMSans"),
+                ("nunito", "Nunito", "Nunito"), ("pixel", "Pixelify Sans", "PixelifySans")]
+FONT_LABELS = {"poppins": "Poppins", "dmsans": "DM Sans", "nunito": "Nunito", "pixel": "Pixel"}
+_AVAILABLE = set()
+
+
+def load_fonts(root, choice="poppins"):
+    """Load the bundled fonts once the window exists, then use the chosen one
+    (Poppins unless you pick another in Settings)."""
+    global _AVAILABLE
     try:
         import tkinter.font as tkfont
     except ImportError:
         return
-    for name in ("Poppins-Regular.ttf", "Poppins-Bold.ttf"):
-        try:
-            _register_font_file(_font_file(name))
-        except Exception:
-            traceback.print_exc()
+    for _key, _family, stem in FONT_CHOICES:
+        for name in (stem + "-Regular.ttf", stem + "-Bold.ttf"):
+            try:
+                _register_font_file(_font_file(name))
+            except Exception:
+                traceback.print_exc()
     try:
-        families = set(tkfont.families(root))
+        _AVAILABLE = set(tkfont.families(root))
     except Exception:
-        families = set()
-    for candidate in ("Poppins", "Avenir Next" if IS_MAC else "Segoe UI", "Helvetica"):
-        if candidate in families:
+        _AVAILABLE = set()
+    set_font(choice)
+
+
+def set_font(choice):
+    """Use one of FONT_CHOICES; falls back to a good built-in font if it didn't load."""
+    global FAMILY
+    wanted = next((f for k, f, _s in FONT_CHOICES if k == choice), "Poppins")
+    for candidate in (wanted, "Poppins", "Avenir Next" if IS_MAC else "Segoe UI", "Helvetica"):
+        if candidate in _AVAILABLE:
             FAMILY = candidate
-            break
+            return
+    FAMILY = None
+
+
+# ---- style: "basic" (rounded) or "pixel" (square corners) ----
+STYLE = "basic"
+
+
+def _radius(r):
+    """Corner roundness for the current style."""
+    if STYLE == "pixel" and r:
+        return min(r, 2)
+    return r
+
+
+def _install_style():
+    """Make every box and button follow the style, without touching each one by hand."""
+    for cls in (ctk.CTkFrame, ctk.CTkButton, ctk.CTkEntry, ctk.CTkLabel, ctk.CTkSegmentedButton,
+                ctk.CTkScrollableFrame, ctk.CTkProgressBar, ctk.CTkSwitch, ctk.CTkTextbox, ctk.CTkCheckBox,
+                ctk.CTkOptionMenu, ctk.CTkScrollbar):
+        if getattr(cls.__init__, "_hk_style", False):
+            continue
+        orig = cls.__init__
+
+        def init(self, *args, _orig=orig, cls=cls, **kw):
+            if STYLE == "pixel":
+                kw["corner_radius"] = _radius(kw.get("corner_radius") or 6)
+                if cls is ctk.CTkSwitch:
+                    kw["button_corner_radius"] = 2
+            _orig(self, *args, **kw)
+        init._hk_style = True
+        cls.__init__ = init
+
+
+_install_style()
 
 
 def font(size=14, weight="normal", mono=False):
@@ -723,6 +819,947 @@ class LogoPicker(ctk.CTkFrame):
 # The app
 # ==========================================================================
 
+# ==========================================================================
+# Backgrounds: a picture behind the whole vault screen (Settings > Appearance)
+# ==========================================================================
+
+BACKGROUNDS = [
+    ("none", "Plain"), ("cherry_blossom", "Cherry Blossom"), ("princess_castle", "Princess Castle"),
+    ("ocean_dusk", "Ocean Dusk"), ("fairy_forest", "Fairy Forest"), ("aurora_peaks", "Aurora Peaks"),
+    ("ramen_shop", "Ramen Shop"), ("samurai_sunset", "Samurai Sunset"), ("knights_keep", "Knight's Keep"),
+    ("neon_city", "Neon City"), ("space_voyage", "Space Voyage"), ("dragon_mountain", "Dragon Mountain"),
+    ("soccer_stadium", "Soccer Stadium"), ("sunny_beach", "Sunny Beach"), ("race_track", "Race Track"),
+    ("sky_ruins", "Sky Ruins"),
+]
+# how far the picture fades toward the theme color: darker in dark mode, lighter in light mode
+BG_DIM = {"low": 0.25, "medium": 0.42, "high": 0.6}
+_bg_source = {}
+_bg_thumbs = {}
+
+
+def background_file(key):
+    return resource(os.path.join("assets", "backgrounds", key + ".jpg"))
+
+
+def background_source(key):
+    """The full picture, loaded once."""
+    if key not in _bg_source:
+        from PIL import Image
+        try:
+            _bg_source[key] = Image.open(background_file(key)).convert("RGB")
+        except OSError:
+            _bg_source[key] = None
+    return _bg_source[key]
+
+
+def background_picture(key, w, h, dim, dark):
+    """The picture filling w x h, faded toward the theme color (dark or light)."""
+    from PIL import Image, ImageOps
+    src = background_source(key)
+    if src is None or w < 2 or h < 2:
+        return None
+    img = ImageOps.fit(src, (w, h), Image.LANCZOS)
+    veil = Image.new("RGB", (w, h), _hex(BG[1] if dark else BG[0]))
+    return Image.blend(img, veil, BG_DIM.get(dim, 0.42))
+
+
+def background_thumb(key, w=120, h=68):
+    """A small preview for the picker in Settings."""
+    k = (key, w, h)
+    if k not in _bg_thumbs:
+        from PIL import Image, ImageOps
+        src = background_source(key) if key != "none" else None
+        if src is None:
+            dark = Image.new("RGB", (w * 2, h * 2), (22, 26, 34))
+            light = Image.new("RGB", (w * 2, h * 2), (255, 255, 255))
+            _bg_thumbs[k] = ctk.CTkImage(light_image=light, dark_image=dark, size=(w, h))
+        else:
+            img = ImageOps.fit(src, (w * 2, h * 2), Image.LANCZOS)
+            _bg_thumbs[k] = ctk.CTkImage(light_image=img, dark_image=img, size=(w, h))
+    return _bg_thumbs[k]
+
+
+def _hex(c):
+    c = c.lstrip("#")
+    return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _star_pil(filled, size, dark):
+    import math
+    from PIL import Image, ImageDraw
+    s = size * 8
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    pts = []
+    for i in range(10):
+        r = s * (0.48 if i % 2 == 0 else 0.2)
+        a = math.radians(-90 + i * 36)
+        pts.append((s / 2 + r * math.cos(a), s * 0.53 + r * math.sin(a)))
+    gold = (242, 193, 78, 255) if dark else (176, 125, 18, 255)
+    grey = (140, 149, 165, 255) if dark else (107, 114, 128, 255)
+    if filled:
+        d.polygon(pts, fill=gold)
+    else:
+        d.line(pts + [pts[0]], fill=grey, width=int(s * 0.07), joint="curve")
+    return img.resize((size, size), Image.LANCZOS)
+
+
+class _Glass:
+    """Drawing helpers shared by the see-through vault screen and its login list.
+    Everything is drawn on a canvas, so the picture really shows through: boxes are
+    tinted, outlined images and text sits right on top with a soft shadow."""
+
+    def _glass_init(self, app, see):
+        self.app, self.see = app, see
+        self._photos, self._fonts, self._n = {}, {}, 0
+
+    @property
+    def dark(self):
+        return ctk.get_appearance_mode().lower() == "dark"
+
+    def _c(self, pair):
+        return pair if isinstance(pair, str) else (pair[1] if self.dark else pair[0])
+
+    def _sc(self):
+        try:
+            return self._get_widget_scaling()
+        except Exception:
+            return 1.0
+
+    def _font(self, size, weight="normal", mono=False):
+        import tkinter.font as tkfont
+        px = int(round(size * self._sc()))
+        k = (px, weight, mono, FAMILY)
+        if k not in self._fonts:
+            fam = MONO if mono else (FAMILY or "TkDefaultFont")
+            self._fonts[k] = tkfont.Font(root=self, family=fam, size=-px, weight=weight)
+        return self._fonts[k]
+
+    def _photo(self, key, make):
+        if key not in self._photos:
+            from PIL import ImageTk
+            self._photos[key] = ImageTk.PhotoImage(make(), master=self)
+        return self._photos[key]
+
+    def _rgba(self, pair, alpha=255):
+        return _hex(self._c(pair)) + (alpha,)
+
+    def _tint(self, strength="row"):
+        """See-through fill for boxes: the theme color, partly clear."""
+        if not self.see:
+            return self._rgba(SURFACE if strength == "row" else SIDE)
+        a = {"row": (105, 125), "panel": (150, 165), "button": (140, 160)}[strength]
+        return self._rgba(BG, a[0] if self.dark else a[1])
+
+    def _edge(self):
+        if not self.see:
+            return self._rgba(BORDER)
+        return (255, 255, 255, 70) if self.dark else (30, 34, 42, 70)
+
+    def rbox(self, w, h, r, fill, outline=None, lw=1):
+        """A rounded box image (fill/outline are RGBA tuples)."""
+        w, h = max(2, int(w)), max(2, int(h))
+        r = _radius(r)
+        key = ("rbox", w, h, int(r * self._sc()), fill, outline, lw)
+
+        def make():
+            from PIL import Image, ImageDraw
+            k = 3
+            img = Image.new("RGBA", (w * k, h * k), (0, 0, 0, 0))
+            rr = int(min(r * self._sc() * k, h * k / 2))
+            width = int(max(1, lw * self._sc()) * k) if outline else 0
+            ImageDraw.Draw(img).rounded_rectangle([0, 0, w * k - 1, h * k - 1], radius=rr, fill=fill,
+                                                  outline=outline, width=width)
+            return img.resize((w, h), Image.LANCZOS)
+        return self._photo(key, make)
+
+    def hit(self, w, h):
+        """An invisible box that catches clicks (canvas images react anywhere in their area)."""
+        import tkinter as tk
+        w, h = max(1, int(w)), max(1, int(h))
+        key = ("hit", w, h)
+        if key not in self._photos:
+            self._photos[key] = tk.PhotoImage(master=self, width=w, height=h)
+        return self._photos[key]
+
+    def text(self, x, y, txt, size, weight="normal", color=TEXT, anchor="w", width=None, tags=(), mono=False,
+             shadow=None):
+        c, f = self.canvas, self._font(size, weight, mono)
+        kw = {"width": int(width)} if width else {}
+        self._last_shadow = None
+        if shadow == "halo":   # text right on the picture: a soft outline all around
+            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1), (1, 1)):
+                self._last_shadow = c.create_text(x + dx, y + dy, text=txt, font=f, fill=self._c(BG),
+                                                  anchor=anchor, tags=tags, **kw)
+        elif shadow if shadow is not None else self.see:
+            self._last_shadow = c.create_text(x + 1, y + 1, text=txt, font=f, fill=self._c(BG), anchor=anchor,
+                                              tags=tags, **kw)
+        return c.create_text(x, y, text=txt, font=f, fill=self._c(color), anchor=anchor, tags=tags, **kw)
+
+    def _pair(self, main):
+        """The text item plus its shadow, so both can change together."""
+        return tuple(i for i in (self._last_shadow, main) if i)
+
+    def clickable(self, tags, cmd):
+        tag = f"c{self._n}"
+        self._n += 1
+        c = self.canvas
+        c.tag_bind(tag, "<Button-1>", lambda _e: cmd())
+        c.tag_bind(tag, "<Enter>", lambda _e: c.configure(cursor="hand2"))
+        c.tag_bind(tag, "<Leave>", lambda _e: c.configure(cursor=""))
+        return tuple(tags) + (tag,)
+
+    def button(self, x, y, label, cmd, kind="ghost", h=34, w=None, size=13, tags=("chrome",), anchor="nw"):
+        """A pill button drawn on the canvas. Returns its box (x0, y0, x1, y1)."""
+        sc = self._sc()
+        bold = kind in ("primary", "soft", "gold")
+        f = self._font(size, "bold" if bold else "normal")
+        h = int(h * sc)
+        w = int(w * sc) if w else f.measure(label) + int(28 * sc)
+        if anchor == "ne":
+            x -= w
+        t = self.clickable(tags, cmd)
+        styles = {
+            "primary": (self._rgba(ACCENT), None, ACCENT_INK),
+            "gold": (self._rgba(GOLD), None, GOLD_INK),
+            "soft": (self._rgba(ACCENT_SOFT, 235 if self.see else 255), self._rgba(ACCENT), ACCENT),
+            "ghost": (self._tint("button"), self._edge(), TEXT),
+            "plain": (None, None, SUBTLE),
+            "link": (None, None, ACCENT),
+            "goldlink": (None, None, GOLD),
+            "danger": (None, None, SIGNOUT),
+        }
+        fill, line, ink = styles[kind]
+        if fill or line:
+            self.canvas.create_image(x, y, anchor="nw", image=self.rbox(w, h, 10, fill or (0, 0, 0, 0), line),
+                                     tags=t)
+        else:
+            self.canvas.create_image(x, y, anchor="nw", image=self.hit(w, h), tags=t)
+        bare = kind in ("plain", "danger", "link", "goldlink")
+        main = self.text(x + w / 2, y + h / 2, label, size, "bold" if bold else "normal", ink, anchor="center",
+                         tags=t, shadow="halo" if bare else (self.see and kind == "ghost"))
+        self._last_label = self._pair(main)
+        return x, y, x + w, y + h
+
+
+class Stand:
+    """Stands in for a label or button on the see-through screen, so the rest of
+    the app can keep calling .configure(text=...) on it."""
+
+    def __init__(self, glass, key, text="", color=None):
+        self.glass, self.key, self.text, self.color, self.state = glass, key, text, color, "normal"
+        self.command = None
+
+    def configure(self, text=None, text_color=None, state=None, **_):
+        if text is not None:
+            self.text = text
+        if text_color is not None:
+            self.color = text_color
+        if state is not None:
+            self.state = state
+        self.glass.restand(self)
+
+    def cget(self, key):
+        return {"text": self.text, "state": self.state}.get(key)
+
+    def winfo_exists(self):
+        try:
+            return bool(self.glass.winfo_exists())
+        except Exception:
+            return False
+
+    def invoke(self):
+        if self.command:
+            self.command()
+
+
+class ArtList(_Glass, ctk.CTkFrame):
+    """The login list on one canvas. It shows its own slice of the screen's picture,
+    so the picture looks like one piece behind everything. The picture stays still
+    while the logins scroll, and is only re-made when the window size changes."""
+
+    def __init__(self, parent, app, glass, see_through=True):
+        ctk.CTkFrame.__init__(self, parent, fg_color=BG, corner_radius=0, border_width=0)
+        import tkinter as tk
+        self._glass_init(app, see_through)
+        self.glass = glass
+        self.offset = (0, 0)
+        self.canvas = tk.Canvas(self, highlightthickness=0, bd=0, bg=self._c(BG), yscrollincrement=20)
+        self.canvas.configure(yscrollcommand=self._scrolled)
+        self.canvas.pack(fill="both", expand=True)
+        self._rows, self._items = [], {}
+        self._more = self._empty = self._restore = None
+        self._bg_item = self._bg_key = None
+        self._seen_w = self._drawn_w = 0
+        self._y = 0
+        self._resize_job = None
+        self.canvas.bind("<Configure>", self._configured)
+        self.canvas.tag_bind("thumb", "<B1-Motion>", self._drag)
+        self.canvas.tag_bind("thumb", "<Button-1>", self._grab)
+        if not getattr(app, "_art_wheel_on", False):   # one shared wheel hook; it never removes other lists' hooks
+            app._art_wheel_on = True
+            for ev in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                app.bind_all(ev, lambda e: ArtList.wheel(app, e), add="+")
+
+    # -- scrolling
+    @staticmethod
+    def wheel(app, e):
+        art = getattr(app, "art", None)
+        if art is None or not art.winfo_exists():
+            return
+        c = art.canvas
+        x, y = c.winfo_pointerx() - c.winfo_rootx(), c.winfo_pointery() - c.winfo_rooty()
+        if not (0 <= x < c.winfo_width() and 0 <= y < c.winfo_height()):
+            return
+        if e.num == 4:
+            step = -1
+        elif e.num == 5:
+            step = 1
+        elif not getattr(e, "delta", 0):
+            return
+        else:
+            d = -e.delta if IS_MAC else -e.delta / 120
+            step = int(d * 3) or (1 if d > 0 else -1)
+        c.yview_scroll(step, "units")
+
+    def _scrolled(self, a, b):
+        a, b = float(a), float(b)
+        c = self.canvas
+        top = c.canvasy(0)
+        if self._bg_item is not None:
+            c.coords(self._bg_item, 0, top)
+        c.delete("thumb")
+        if b - a < 0.999:   # a slim scroll handle on the right, drawn over the picture
+            h = c.winfo_height()
+            sc = self._sc()
+            th = max(int(30 * sc), int(h * (b - a)))
+            ty = top + int((h - th) * (a / max(1e-6, 1 - (b - a))))
+            w = int(6 * sc)
+            c.create_image(c.winfo_width() - w - 2, ty, anchor="nw", tags=("thumb",),
+                           image=self.rbox(w, th, 3, self._rgba(MUTED, 170)))
+
+    def _grab(self, e):
+        self._grab_y, self._grab_top = e.y, self.canvas.yview()[0]
+
+    def _drag(self, e):
+        h = max(1, self.canvas.winfo_height())
+        self.canvas.yview_moveto(self._grab_top + (e.y - self._grab_y) / h)
+
+    # -- the picture
+    def _configured(self, e):
+        if e.width == self._seen_w and e.width == self._drawn_w:
+            self.refresh_bg()
+            return
+        # the screen only resizes the list after the window settles, so redraw right away
+        self._relayout()
+
+    def refresh_bg(self):
+        c = self.canvas
+        w, h = c.winfo_width(), c.winfo_height()
+        if w < 10 or h < 10:
+            return
+        c.configure(bg=self._c(BG))
+        key = ("bg", self.glass.bg_key(), self.offset, w, h)
+        if self._bg_key != key:
+            photo = self.glass.slice(self.offset[0], self.offset[1], w, h)
+            if photo is None:
+                return
+            self._bg_key = key
+            if self._bg_item is None:
+                self._bg_item = c.create_image(0, 0, anchor="nw", image=photo, tags=("bg",))
+            else:
+                c.itemconfigure(self._bg_item, image=photo)
+        c.tag_lower("bg")
+        c.coords(self._bg_item, 0, c.canvasy(0))
+        self._scrolled(*c.yview())
+
+    # -- rows
+    def _row_box(self, w, h, on):
+        r = 10 if self.app.compact else 12
+        if on:
+            fill = self._rgba(ACCENT_SOFT, (200 if self.dark else 215) if self.see else 255)
+            return self.rbox(w, h, r, fill, self._rgba(ACCENT), 2)
+        return self.rbox(w, h, r, self._tint("row"), self._edge(), 1.5 if self.see else 1)
+
+    def _tile(self, size):
+        return self.rbox(size, size, size / self._sc() * 0.22, self._rgba(RAISED, 235 if self.see else 255))
+
+    def clear(self, keep_scroll=False):
+        self._restore = self.canvas.yview()[0] if keep_scroll else None
+        self.canvas.delete("row")
+        self.canvas.delete("more")
+        if self._empty is not None:
+            self._empty.destroy()
+            self._empty = None
+        self._rows, self._items, self._more, self._y = [], {}, None, 0
+        self.refresh_bg()
+
+    def finish(self):
+        self._set_region()
+        if self._restore is not None:
+            self.canvas.yview_moveto(self._restore)
+            self._restore = None
+
+    def _set_region(self):
+        h = max(self._y + 8 * self._sc(), self.canvas.winfo_height())
+        self.canvas.configure(scrollregion=(0, 0, self.canvas.winfo_width(), h))
+
+    def add_row(self, e, info):
+        self._rows.append((e, info))
+        self._draw_row(e, info)
+        self._set_region()
+
+    def _draw_row(self, e, info):
+        c, sc, compact = self.canvas, self._sc(), self.app.compact
+        W = max(200, c.winfo_width())
+        self._drawn_w = W
+        h = int((44 if compact else 64) * sc)
+        gap = int((4 if compact else 8) * sc)
+        y = int(self._y + gap / 2)
+        w = int(W - 14 * sc)
+        eid = e["id"]
+        sel = self.clickable(("row",), lambda: self.app.select(eid))
+        card = c.create_image(0, y, anchor="nw", image=self._row_box(w, h, eid == self.app.sel_id), tags=sel)
+        self._items[eid] = (card, w, h)
+        tile = int((32 if compact else 44) * sc)
+        tx, cy = int(12 * sc), y + h // 2
+        c.create_image(tx, cy, anchor="w", image=self._tile(tile), tags=sel)
+        icon = int((18 if compact else 24) * sc)
+        img = None
+        if e.get("icon"):
+            pil = brand_icons.render(e["icon"], icon * 2, light=not self.dark)
+            if pil is not None:
+                from PIL import Image
+                img = self._photo(("icon", e["icon"], icon, self.dark), lambda: pil.resize((icon, icon), Image.LANCZOS))
+        if img:
+            c.create_image(tx + tile // 2, cy, image=img, tags=sel)
+        else:
+            c.create_text(tx + tile // 2, cy, text=(e["title"][:1] or "?").upper(),
+                          font=self._font(15 if compact else 17, "bold"), fill=self._c(ACCENT), tags=sel)
+        x = tx + tile + int(12 * sc)
+        right = w - int(8 * sc)
+        star = int(18 * sc)
+        sx = right - int(17 * sc)
+        fav = self.clickable(("row",), lambda: self.app.toggle_fav(eid))
+        c.create_image(sx - 17 * sc, cy - 17 * sc, anchor="nw", image=self.hit(34 * sc, 34 * sc), tags=fav)
+        c.create_image(sx, cy, image=self._photo(("star", e["fav"], star, self.dark),
+                                                 lambda: _star_pil(e["fav"], star, self.dark)), tags=fav)
+        right = sx - int(24 * sc)
+        if info.get("remove"):
+            bx0, _, _, _ = self.button(right, cy - 14 * sc, "Remove", lambda: self.app.remove_from_folder(eid),
+                                       "ghost", h=28, size=11, tags=("row",), anchor="ne")
+            right = bx0 - int(8 * sc)
+        if info.get("note"):
+            label, color = info["note"]
+            t = self.text(right, cy, label, 11, "normal", SUBTLE, anchor="e", tags=sel)
+            x0 = c.bbox(t)[0] - int(13 * sc)
+            r = 3.5 * sc
+            c.create_oval(x0 - r, cy - r, x0 + r, cy + r, fill=self._c(color), outline="", tags=sel)
+        if compact:
+            n = self.text(x, cy, e["title"], 14, "bold", TEXT, tags=sel)
+            self.text(c.bbox(n)[2] + int(12 * sc), cy, info["user"], 12, "normal", MUTED, tags=sel)
+        else:
+            self.text(x, cy - int(9 * sc), e["title"], 15, "bold", TEXT, tags=sel)
+            self.text(x, cy + int(11 * sc), info["user"], 12, "normal", MUTED, tags=sel)
+        self._y = y + h + gap / 2
+
+    def set_selected(self, old, new):
+        for eid, on in ((old, False), (new, True)):
+            if eid in self._items:
+                item, w, h = self._items[eid]
+                self.canvas.itemconfigure(item, image=self._row_box(w, h, on))
+
+    def add_more(self, text, command):
+        c, sc = self.canvas, self._sc()
+        W = max(200, c.winfo_width())
+        f = self._font(13)
+        w = f.measure(text) + int(40 * sc)
+        x0, _, _, y1 = self.button((W - w) // 2, self._y + 8 * sc, text, command, "ghost", h=40, tags=("more",))
+        self._more = (text, command)
+        self._y = y1 + 12 * sc
+        self._set_region()
+
+    def remove_more(self):
+        if self._more is not None:
+            self.canvas.delete("more")
+            self._more = None
+
+    def empty_holder(self):
+        """A solid box for the empty-list message (it has buttons, so it stays a normal widget)."""
+        box = ctk.CTkFrame(self.canvas, fg_color=SURFACE, corner_radius=14, border_width=1, border_color=BORDER)
+        W = max(200, self.canvas.winfo_width())
+        self.canvas.create_window(0, int(10 * self._sc()), anchor="nw", window=box, width=int(W - 14 * self._sc()),
+                                  tags=("row",))
+        self._empty = box
+        return box
+
+    def _relayout(self):
+        self._resize_job = None
+        self._seen_w = self.canvas.winfo_width()
+        rows, more = self._rows, self._more
+        frac = self.canvas.yview()[0]
+        self.canvas.delete("row")
+        self.canvas.delete("more")
+        self._rows, self._items, self._y, self._more = [], {}, 0, None
+        self.refresh_bg()
+        if self._empty is not None:
+            self._empty = None
+            self.app.refresh_rows(keep_scroll=True)
+            return
+        for e, info in rows:
+            self.add_row(e, info)
+        if more:
+            self.add_more(*more)
+        self._set_region()
+        self.canvas.yview_moveto(frac)
+
+
+class GlassMain(_Glass, ctk.CTkFrame):
+    """The vault screen with a background picture behind everything: the sidebar,
+    the top bar, the logins and the details panel are see-through boxes over it."""
+
+    SIDE, PANEL, RAIL = 236, 372, 46
+
+    def __init__(self, parent, app, key, dim="medium", see_through=True):
+        ctk.CTkFrame.__init__(self, parent, fg_color=BG, corner_radius=0)
+        import tkinter as tk
+        self._glass_init(app, see_through)
+        self.key, self.dim = key, dim
+        self.canvas = tk.Canvas(self, highlightthickness=0, bd=0, bg=self._c(BG))
+        self.canvas.pack(fill="both", expand=True)
+        self._pic = None           # (key, PIL picture) for the current size
+        self._job = None
+        self._size = (0, 0)
+        self.stands = {"status": Stand(self, "status", "Usernames and passwords stay hidden until you ask.", MUTED),
+                       "sync": Stand(self, "sync", "", SUBTLE),
+                       "recovery": Stand(self, "recovery", "Turn on")}
+        self._stand_items = {}
+        self.search = ctk.CTkEntry(self.canvas, placeholder_text="Search your logins", height=34, corner_radius=0,
+                                   border_width=0, fg_color=SURFACE, text_color=TEXT,
+                                   placeholder_text_color=SUBTLE, font=font(14))
+        self._search_win = self.canvas.create_window(-999, -999, anchor="nw", window=self.search, tags=("win",))
+        self.art = ArtList(self.canvas, app, self, see_through)
+        self._art_win = self.canvas.create_window(-999, -999, anchor="nw", window=self.art, tags=("win",))
+        self.form_slot = ctk.CTkFrame(self.canvas, fg_color=SIDE, width=1, height=1, corner_radius=0)
+        self._form_win = self.canvas.create_window(-999, -999, anchor="nw", window=self.form_slot, tags=("win",))
+        self.canvas.bind("<Configure>", self._configured)
+        ctk.AppearanceModeTracker.add(self._mode_changed, self)
+
+    def destroy(self):
+        try:
+            ctk.AppearanceModeTracker.remove(self._mode_changed)
+        except Exception:
+            pass
+        ctk.CTkFrame.destroy(self)
+
+    def _mode_changed(self, _mode=None):
+        if self._job:
+            self.after_cancel(self._job)
+        self._job = self.after(20, lambda: self.app.refresh_rows(keep_scroll=True))
+
+    def _configured(self, e):
+        if (e.width, e.height) == self._size or e.width < 300 or e.height < 200:
+            return   # minimized, or nothing changed
+        if self._job:
+            self.after_cancel(self._job)
+        self._job = self.after(80, self.redraw)
+
+    # -- the picture
+    def bg_key(self):
+        return (self.key, self._size, self.dim, self.dark)
+
+    def picture(self):
+        w, h = self.canvas.winfo_width(), self.canvas.winfo_height()
+        self._size = (w, h)
+        if self._pic is None or self._pic[0] != self.bg_key():
+            self._pic = (self.bg_key(), background_picture(self.key, w, h, self.dim, self.dark))
+            for k in [k for k in self._photos if k[0] in ("pic", "slice")]:
+                del self._photos[k]
+        return self._pic[1]
+
+    def slice(self, x, y, w, h):
+        pic = self.picture()
+        if pic is None:
+            return None
+        return self._photo(("slice", x, y, w, h), lambda: pic.crop((x, y, x + w, y + h)))
+
+    # -- stand-ins
+    def restand(self, stand):
+        items = self._stand_items.get(stand.key)
+        if items and self.canvas.winfo_exists():
+            for i in items:
+                self.canvas.itemconfigure(i, text=stand.text)
+            if stand.color is not None:
+                self.canvas.itemconfigure(items[-1], fill=self._c(stand.color))
+
+    def _stand_text(self, stand, x, y, size=12, anchor="w", width=None, tags=("chrome",)):
+        t = self.text(x, y, stand.text, size, "normal", stand.color or MUTED, anchor=anchor, width=width, tags=tags,
+                      shadow="halo")
+        self._stand_items[stand.key] = self._pair(t)
+        return t
+
+    # -- layout
+    def redraw(self):
+        self._job = None
+        c, a, sc = self.canvas, self.app, self._sc()
+        if not c.winfo_exists() or a.vault is None:
+            return
+        W, H = c.winfo_width(), c.winfo_height()
+        if W < 300 or H < 200:
+            return
+        c.configure(bg=self._c(BG))
+        c.delete("chrome")
+        self._stand_items = {}
+        pic = self.picture()
+        if pic is not None:
+            c.create_image(0, 0, anchor="nw", image=self._photo(("pic", W, H, self.bg_key()), lambda: pic),
+                           tags=("chrome", "pic"))
+        m = int(10 * sc)
+        side = int(self.SIDE * sc)
+        right = W
+        if a.sel_id is not None:
+            right = W - int((self.PANEL if a.settings.get("panel_open", True) else self.RAIL) * sc)
+        self._sidebar(m, m, side, H - m)
+        self._main(side + int(16 * sc), right - int(16 * sc), W, H)
+        if a.sel_id is not None:
+            if a.settings.get("panel_open", True):
+                self._panel(right, m, W - m, H - m)
+            else:
+                self._rail(right, m, W - m, H - m)
+        c.tag_lower("pic")
+        c.tag_raise("win")
+
+    def _card(self, x0, y0, x1, y1):
+        self.canvas.create_image(x0, y0, anchor="nw", tags=("chrome",),
+                                 image=self.rbox(x1 - x0, y1 - y0, 16, self._tint("panel"), self._edge()))
+
+    def _sidebar(self, x0, y0, x1, y1):
+        c, a, sc = self.canvas, self.app, self._sc()
+        self._card(x0, y0, x1, y1)
+        pad = int(16 * sc)
+        y = y0 + int(18 * sc)
+        lz = int(38 * sc)
+        c.create_image(x0 + pad, y, anchor="nw", tags=("chrome",),
+                       image=self._photo(("logo", lz, self.dark), lambda: draw_logo(lz, tile=False, light=not self.dark)))
+        tx = x0 + pad + lz + int(8 * sc)
+        t = self.text(tx, y + lz / 2, "Hush", 21, "bold", BRAND_GREEN, tags=("chrome",), shadow=False)
+        self.text(c.bbox(t)[2], y + lz / 2, "Key", 21, "bold", GOLD, tags=("chrome",), shadow=False)
+        y += lz + int(18 * sc)
+        entries = a.vault.list_entries()
+        favs = sum(1 for e in entries if e["fav"])
+        y = self._nav(x0, x1, y, "All Logins", len(entries), a.view == "all", lambda: a.set_view("all"), "box")
+        y = self._nav(x0, x1, y, "Favorites", favs, a.view == "favorites", lambda: a.set_view("favorites"), "star")
+        y += int(14 * sc)
+        self.text(x0 + pad + int(8 * sc), y + 12 * sc, "FOLDERS", 11, "bold", SUBTLE, tags=("chrome",))
+        self.button(x1 - int(10 * sc), y, "+", a.open_folder_form, "link", h=26, w=28, size=18, anchor="ne")
+        y += int(30 * sc)
+        counts = {}
+        for e in entries:
+            if e["folder"]:
+                counts[e["folder"]] = counts.get(e["folder"], 0) + 1
+        for f in a.vault.folders():
+            y = self._nav(x0, x1, y, f["name"], counts.get(f["id"], 0), a.view == "folder:" + f["id"],
+                          lambda fid=f["id"]: a.set_view("folder:" + fid), f.get("color") or self._c(ACCENT))
+        form = a._folder_form is not None and a._folder_form.winfo_exists()
+        if not a.vault.folders() and not form:
+            self.text(x0 + pad + int(8 * sc), y + 10 * sc, "Click + to make a folder", 12, "normal", SUBTLE,
+                      tags=("chrome",))
+        c.coords(self._form_win, (x0 + int(10 * sc), y + int(4 * sc)) if form else (-999, -999))
+        if form:
+            c.itemconfigure(self._form_win, width=x1 - x0 - int(20 * sc))
+        # bottom: vault health + sync
+        by = y1 - int(14 * sc)
+        if a.syncer is not None:
+            s = self.stands["sync"]
+            t = self._stand_text(s, x0 + pad + int(4 * sc), by - 8 * sc, 12, tags=self.clickable(
+                ("chrome",), a._sync_label_clicked))
+            by -= int(28 * sc)
+        hh = int(80 * sc)
+        hx0, hy0 = x0 + int(10 * sc), by - hh
+        tags = self.clickable(("chrome",), a.show_security)
+        c.create_image(hx0, hy0, anchor="nw", tags=tags,
+                       image=self.rbox(x1 - x0 - int(20 * sc), hh, 14, self._tint("row"), self._edge()))
+        score = getattr(a, "_score", 100)
+        rz = int(58 * sc)
+        c.create_image(hx0 + int(10 * sc), hy0 + hh / 2, anchor="w", tags=tags,
+                       image=self._photo(("ring", score, rz, self.dark), lambda: self._ring(score, rz)))
+        self.text(hx0 + int(10 * sc) + rz / 2, hy0 + hh / 2, str(score), 16, "bold", TEXT, anchor="center",
+                  tags=tags)
+        wx = hx0 + rz + int(20 * sc)
+        word = "Great" if score >= 90 else ("Good" if score >= 70 else ("Fair" if score >= 50 else "Needs care"))
+        n = getattr(a, "_open_tips", 0)
+        self.text(wx, hy0 + 22 * sc, "Vault Health", 13, "bold", TEXT, tags=tags)
+        self.text(wx, hy0 + 41 * sc, f"{word} · {score}/100", 12, "normal",
+                  (health_color(score, False), health_color(score, True)), tags=tags)
+        self.text(wx, hy0 + 59 * sc, f"{n} optional tip{'s' if n != 1 else ''} →" if n else "All caught up →",
+                  11, "normal", SUBTLE, tags=tags)
+
+    def _ring(self, score, size):
+        from PIL import Image, ImageDraw
+        s = size * 4
+        img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        w = int(s * 0.11)
+        d.ellipse([w // 2, w // 2, s - w // 2, s - w // 2], outline="#2A303C" if self.dark else "#E9E2D2", width=w)
+        if score > 0:
+            d.arc([w // 2, w // 2, s - w // 2, s - w // 2], -90, -90 + 360 * score / 100,
+                  fill=health_color(score, self.dark), width=w)
+        return img.resize((size, size), Image.LANCZOS)
+
+    def _nav(self, x0, x1, y, label, count, on, cmd, icon):
+        c, sc = self.canvas, self._sc()
+        h = int(38 * sc)
+        tags = self.clickable(("chrome",), cmd)
+        rx0, rw = x0 + int(8 * sc), x1 - x0 - int(16 * sc)
+        if on:
+            c.create_image(rx0, y, anchor="nw", tags=tags,
+                           image=self.rbox(rw, h, 10, self._rgba(ACCENT_SOFT, 215 if self.see else 255)))
+        else:
+            c.create_image(rx0, y, anchor="nw", tags=tags, image=self.hit(rw, h))
+        cy, ix = y + h / 2, rx0 + int(18 * sc)
+        if icon == "star":
+            z = int(15 * sc)
+            c.create_image(ix, cy, tags=tags, image=self._photo(("star", True, z, self.dark),
+                                                                lambda: _star_pil(True, z, self.dark)))
+        else:
+            r = (6 if icon == "box" else 5) * sc
+            col = self._c(ACCENT if on else SUBTLE) if icon == "box" else icon
+            c.create_image(ix, cy, tags=tags, image=self.rbox(2 * r, 2 * r, 3, _hex(col) + (255,)))
+        self.text(ix + int(16 * sc), cy, label, 14 if icon in ("box", "star") else 13, "bold" if on else "normal",
+                  ACCENT if on else TEXT, tags=tags)
+        self.text(rx0 + rw - int(12 * sc), cy, str(count), 12, "normal", SUBTLE, anchor="e", tags=tags)
+        return y + h + int(2 * sc)
+
+    def _main(self, x0, x1, W, H):
+        c, a, sc = self.canvas, self.app, self._sc()
+        y = int(20 * sc)
+        folder = None
+        if a.view.startswith("folder:"):
+            folder = next((f for f in a.vault.folders() if f["id"] == a.view[7:]), None)
+        title = "Favorites" if a.view == "favorites" else (folder["name"] if folder else "All Logins")
+        t = self.text(x0, y + 19 * sc, title, 22, "bold", TEXT, tags=("chrome",), shadow="halo")
+        if folder:
+            bx = c.bbox(t)[2] + int(10 * sc)
+            bx = self.button(bx, y + 6 * sc, "Rename", lambda: a.rename_folder(folder), "plain", h=26, size=12)[2]
+            self.button(bx, y + 6 * sc, "Delete folder", lambda: a.delete_folder(folder), "plain", h=26, size=12)
+        def profile():
+            was_open = a._menu is not None and a._menu.winfo_exists()
+            a.after(1, lambda: None if was_open else a.toggle_menu())
+        px0 = self.button(x1, y, f"{(a.vault.email[:1] or '?').upper()}  ▾", profile, "ghost", h=38, w=72,
+                          size=14, anchor="ne")[0]
+        self.button(px0 - int(10 * sc), y, "+  Add Login", a.open_add, "primary", h=38, w=128, size=14, anchor="ne")
+        y += int(52 * sc)
+        sync_off = a.syncer is not None and not a.syncer.enabled and a.syncer._session is None
+        if a.cloud.configured and (not a.vault.has_recovery or sync_off):
+            text = ("Turn on sync to use HushKey on all your computers"
+                    + ("" if a.vault.has_recovery else " and to reset your master password by email if you forget it")
+                    + ". Only encrypted data is uploaded.")
+            bh = int(60 * sc)
+            c.create_image(x0, y, anchor="nw", tags=("chrome",),
+                           image=self.rbox(x1 - x0, bh, 12, self._rgba(GOLD_SOFT, 230 if self.see else 255),
+                                           self._rgba(GOLD)))
+            self.text(x0 + 16 * sc, y + bh / 2, text, 13, "normal", TEXT, width=x1 - x0 - 150 * sc, tags=("chrome",),
+                      shadow=False)
+            r = self.stands["recovery"]
+            r.command = a.turn_on_recovery
+            self.button(x1 - 12 * sc, y + (bh - 36 * sc) / 2, r.text,
+                        lambda: a.turn_on_recovery() if r.state == "normal" else None, "gold", h=36, w=100,
+                        size=14, anchor="ne")
+            self._stand_items["recovery"] = self._last_label
+            y += bh + int(12 * sc)
+        sh = int(42 * sc)
+        c.create_image(x0, y, anchor="nw", tags=("chrome",),
+                       image=self.rbox(x1 - x0, sh, 12, self._rgba(SURFACE), self._rgba(BORDER)))
+        c.coords(self._search_win, x0 + int(12 * sc), y + int(4 * sc))
+        c.itemconfigure(self._search_win, width=x1 - x0 - int(24 * sc), height=sh - int(8 * sc))
+        y += sh + int(10 * sc)
+        on = a.settings.get("show_usernames", False)
+        self.button(x0, y, "Hide usernames" if on else "Show usernames", a.toggle_usernames,
+                    "soft" if on else "ghost", h=30, size=12)
+        comp = a.compact
+        bx = self.button(x1, y, "Compact", lambda: a.set_density("Compact"), "soft" if comp else "ghost", h=30,
+                         size=12, anchor="ne")[0]
+        self.button(bx - int(6 * sc), y, "Comfortable", lambda: a.set_density("Comfortable"),
+                    "ghost" if comp else "soft", h=30, size=12, anchor="ne")
+        y += int(40 * sc)
+        foot = int(34 * sc)
+        lh = max(int(60 * sc), H - y - foot)
+        self.art.offset = (int(x0), int(y))
+        c.coords(self._art_win, x0, y)
+        c.itemconfigure(self._art_win, width=int(x1 - x0), height=lh)
+        self.art.refresh_bg()
+        fy = H - foot / 2
+        self._stand_text(self.stands["status"], x0, fy, 12)
+        v = self.text(x1, fy, f"v{__version__}", 11, "normal", SUBTLE, anchor="e", tags=("chrome",), shadow="halo")
+        if a.update_release is not None:
+            self.button(c.bbox(v)[0] - int(8 * sc), fy - 13 * sc, f"HushKey v{a.update_release.version} is ready: "
+                        "update now", a.show_update_dialog, "goldlink", h=26, size=12, anchor="ne")
+
+    def _rail(self, x0, y0, x1, y1):
+        self._card(x0, y0, x1, y1)
+        self.button(x0 + (x1 - x0) / 2 - 16 * self._sc(), y0 + 12 * self._sc(), "‹", self.app.open_panel, "ghost",
+                    h=32, w=32, size=16)
+
+    def _panel(self, x0, y0, x1, y1):
+        c, a, sc = self.canvas, self.app, self._sc()
+        try:
+            e = a.vault.get(a.sel_id)
+        except VaultError:
+            a.sel_id = None
+            return
+        self._card(x0, y0, x1, y1)
+        pad = int(18 * sc)
+        x0p, x1p = x0 + pad, x1 - pad
+        y = y0 + int(10 * sc)
+        self.button(x0p - 8 * sc, y, "›  Hide", a.close_panel, "plain", h=28, size=12)
+        y += int(38 * sc)
+        tz = int(58 * sc)
+        c.create_image(x0p, y, anchor="nw", tags=("chrome",), image=self.rbox(tz, tz, 14, self._rgba(RAISED, 235)))
+        img = None
+        if e["icon"]:
+            iz = int(32 * sc)
+            pil = brand_icons.render(e["icon"], iz * 2, light=not self.dark)
+            if pil is not None:
+                from PIL import Image
+                img = self._photo(("icon", e["icon"], iz, self.dark), lambda: pil.resize((iz, iz), Image.LANCZOS))
+        if img:
+            c.create_image(x0p + tz / 2, y + tz / 2, image=img, tags=("chrome",))
+        else:
+            self.text(x0p + tz / 2, y + tz / 2, (e["title"][:1] or "?").upper(), 22, "bold", ACCENT, anchor="center",
+                      tags=("chrome",), shadow=False)
+        sz = int(22 * sc)
+        st = self.clickable(("chrome",), lambda: a.toggle_fav(e["id"]))
+        c.create_image(x1p - sz / 2, y + tz / 2, tags=st, image=self._photo(
+            ("star", e["fav"], sz, self.dark), lambda: _star_pil(e["fav"], sz, self.dark)))
+        nx = x0p + tz + int(12 * sc)
+        t = self.text(nx, y + 4 * sc, e["title"], 18, "bold", TEXT, anchor="nw", width=x1p - nx - 34 * sc,
+                      tags=("chrome",))
+        ty = c.bbox(t)[3]
+        if e["url"]:
+            site = e["url"].split("//")[-1].split("/")[0].removeprefix("www.")
+            ty = self.button(nx - 14 * sc, ty, f"{site} · Open site ↗", lambda: webbrowser.open(e["url"]), "link",
+                             h=24, size=12)[3]
+        y = max(y + tz, ty) + int(14 * sc)
+        a._revealed = {"user": False, "pass": False}
+        a._secret_widgets = {}
+        y = self._secret(x0p, x1p, y, "USERNAME", "user", e["username"] or "(none)", 0, False)
+        y = self._secret(x0p, x1p, y + 10 * sc, "PASSWORD", "pass", e["password"], 1, True)
+        # folders
+        y += int(14 * sc)
+        self.text(x0p, y + 8 * sc, "FOLDER", 11, "bold", SUBTLE, tags=("chrome",), shadow="halo")
+        y += int(24 * sc)
+        folders = a.vault.folders()
+        cur = next((f for f in folders if f["id"] == e["folder"]), None)
+        if cur:
+            y = self._chip(x0p, y, cur.get("color") or self._c(ACCENT), cur["name"] + "   ×",
+                           lambda: a.remove_from_folder(e["id"]), on=True)[3] + int(6 * sc)
+        if not folders:
+            t = self.text(x0p, y + 8 * sc, "No folders yet. Click + under Folders to make one.", 12, "normal", SUBTLE,
+                          width=x1p - x0p, anchor="nw", tags=("chrome",))
+            y = c.bbox(t)[3] + int(6 * sc)
+        else:
+            others = [f for f in folders if f["id"] != e["folder"]]
+            if others:
+                t = self.text(x0p, y + 14 * sc, "Move to" if cur else "Add to", 12, "normal", SUBTLE,
+                              tags=("chrome",), shadow="halo")
+                x = c.bbox(t)[2] + int(8 * sc)
+                for f in others:
+                    w = self._font(12).measure(f["name"]) + int(34 * sc)
+                    if x + w > x1p:
+                        x, y = x0p, y + int(34 * sc)
+                    x = self._chip(x, y, f.get("color") or self._c(ACCENT), f["name"],
+                                   lambda fid=f["id"]: a.move_to_folder(e["id"], fid))[2] + int(6 * sc)
+                y += int(34 * sc)
+        # suggestion
+        r = a._report.get(e["id"])
+        if a._tip_visible(r):
+            _, tip = a._tip_text(r)
+            y += int(8 * sc)
+            tw = x1p - x0p
+            probe = c.create_text(0, -9999, text=tip, font=self._font(12), width=tw - 40 * sc, anchor="nw")
+            th = c.bbox(probe)[3] - c.bbox(probe)[1]
+            c.delete(probe)
+            f12 = self._font(12)
+            fits = (f12.measure("Make a stronger one") + f12.measure("Not now") + f12.measure("Don't remind me")
+                    + 104 * sc) < tw
+            bh = th + int((62 if fits else 96) * sc)
+            c.create_image(x0p, y, anchor="nw", tags=("chrome",),
+                           image=self.rbox(tw, bh, 10, self._tint("row"), self._edge()))
+            d = 3.5 * sc
+            c.create_oval(x0p + 14 * sc - d, y + 18 * sc - d, x0p + 14 * sc + d, y + 18 * sc + d,
+                          fill=self._c(a._tip_color(r)), outline="", tags=("chrome",))
+            self.text(x0p + 26 * sc, y + 10 * sc, tip, 12, "normal", MUTED, anchor="nw", width=tw - 40 * sc,
+                      tags=("chrome",))
+            by = y + th + int(22 * sc)
+            bx = self.button(x0p + 10 * sc, by, "Make a stronger one", lambda: a.open_edit(e["id"], fresh=True),
+                             "soft", h=28, size=12)[2]
+            if not fits:
+                bx, by = x0p + 2 * sc, by + 34 * sc
+            bx = self.button(bx + 2 * sc, by, "Not now", lambda: a.snooze_tip(e["id"]), "plain", h=28, size=12)[2]
+            self.button(bx, by, "Don't remind me", lambda: a.mute_tip(e["id"]), "plain", h=28, size=12)
+        # bottom
+        bh = int(40 * sc)
+        by = y1 - pad - bh
+        dx = self.button(x1p, by, "Delete", lambda: a.delete_entry(e["id"]), "plain", h=40, w=80, size=14,
+                         anchor="ne")[0]
+        self.button(x0p, by, "Edit", lambda: a.open_edit(e["id"]), "ghost", h=40, w=(dx - x0p) / sc - 8, size=14)
+        self.text(x0p, by - 16 * sc, "Password changed " + ago(e["changed"]), 12, "normal", SUBTLE, tags=("chrome",),
+                  shadow="halo")
+
+    def _chip(self, x, y, color, label, cmd, on=False):
+        c, sc = self.canvas, self._sc()
+        w = self._font(12, "bold" if on else "normal").measure(label) + int(34 * sc)
+        h = int(28 * sc)
+        tags = self.clickable(("chrome",), cmd)
+        fill = self._rgba(ACCENT_SOFT, 225 if self.see else 255) if on else self._tint("button")
+        c.create_image(x, y, anchor="nw", tags=tags,
+                       image=self.rbox(w, h, 14, fill, self._rgba(ACCENT) if on else self._edge()))
+        c.create_image(x + 14 * sc, y + h / 2, tags=tags, image=self.rbox(8 * sc, 8 * sc, 3, _hex(self._c(color)) + (255,)))
+        self.text(x + 24 * sc, y + h / 2, label, 12, "bold" if on else "normal", ACCENT if on else MUTED, tags=tags,
+                  shadow=False)
+        return x, y, x + w, y + h
+
+    def _secret(self, x0, x1, y, label, key, value, which, accent_copy):
+        c, a, sc = self.canvas, self.app, self._sc()
+        strength = key == "pass"
+        h = int((92 if strength else 64) * sc)
+        c.create_image(x0, y, anchor="nw", tags=("chrome",),
+                       image=self.rbox(x1 - x0, h, 12, self._tint("row"), self._edge()))
+        self.text(x0 + 14 * sc, y + 18 * sc, label, 11, "bold", SUBTLE, tags=("chrome",))
+        shown = Stand(self, "secret-" + key, DOTS, TEXT)
+        t = self.text(x0 + 14 * sc, y + 40 * sc, DOTS, 14, "normal", TEXT, width=150 * sc, tags=("chrome",),
+                      mono=strength)
+        self._stand_items[shown.key] = self._pair(t)
+        bx = self.button(x1 - 12 * sc, y + 16 * sc, "Copy", lambda: a.copy(a.sel_id, which),
+                         "primary" if accent_copy else "ghost", h=30, w=58, size=12, anchor="ne")[0]
+        btn = Stand(self, "btn-" + key, "Show", TEXT)
+        self.button(bx - 6 * sc, y + 16 * sc, "Show", lambda: btn.invoke(), "ghost", h=30, w=54, size=12,
+                    anchor="ne")
+        self._stand_items[btn.key] = self._last_label
+
+        def flip():
+            a._revealed[key] = not a._revealed[key]
+            shown.configure(text=value if a._revealed[key] else DOTS)
+            btn.configure(text="Hide" if a._revealed[key] else "Show")
+            if a._revealed[key]:
+                a.reveal_deadline = time.time() + REVEAL_SECONDS
+                a.revealed_id = a.sel_id
+        btn.command = flip
+        a._secret_widgets[key] = (shown, btn)
+        if strength:
+            score, _ = password_strength(value)
+            ty = y + h - int(20 * sc)
+            tw = x1 - x0 - int(28 * sc) - int(90 * sc)
+            c.create_image(x0 + 14 * sc, ty, anchor="w", tags=("chrome",),
+                           image=self.rbox(tw, 8 * sc, 4, self._rgba(TRACK)))
+            c.create_image(x0 + 14 * sc, ty, anchor="w", tags=("chrome",),
+                           image=self.rbox(max(8 * sc, tw * max(score, 1) / 4), 8 * sc, 4,
+                                           self._rgba(STRENGTH_COLORS[score])))
+            self.text(x1 - 14 * sc, ty, STRENGTH_LABELS[score], 12, "bold", STRENGTH_COLORS[score], anchor="e",
+                      tags=("chrome",))
+        return y + h
+
+
 class HushKeyApp(ctk.CTk):
     def __init__(self, data_dir: str | None = None, cloud: Cloud | None = None, updater=None):
         self.data_dir = data_dir
@@ -730,8 +1767,10 @@ class HushKeyApp(ctk.CTk):
         theme = self.settings.get("theme", "dark")
         ctk.set_appearance_mode(theme if theme in ("light", "dark") else "system")
         apply_accent(self.settings.get("accent", "green"))
+        global STYLE
+        STYLE = "pixel" if self.settings.get("style") == "pixel" else "basic"
         super().__init__(fg_color=BG)
-        load_fonts(self)
+        load_fonts(self, self.settings.get("font", "poppins"))
         self.title(APP_NAME)
         self.minsize(880, 640)
         self._place_window()
@@ -761,6 +1800,8 @@ class HushKeyApp(ctk.CTk):
         self.screen = 0           # bumps every screen change; stale callbacks are ignored
         self._jobs = queue.Queue()
         self.rows = {}
+        self.art = None
+        self.glass = None
         self.remember_var = None
         self.view, self.sel_id = "all", None
         self._new_vault = False
@@ -915,17 +1956,50 @@ class HushKeyApp(ctk.CTk):
         self._secret_widgets = {}
         self._on_security = False
         self.listbox = None
+        self.art = None
+        self.glass = None
         for w in self.body.winfo_children():
             w.destroy()
 
     def _card(self, width=440):
-        card = ctk.CTkFrame(self.body, width=width, fg_color=SURFACE, corner_radius=18,
+        picture = self._signin_backdrop()
+        # over a picture the box has square corners, so no plain-colored corners show around it
+        card = ctk.CTkFrame(self.body, width=width, fg_color=SURFACE, corner_radius=0 if picture else 18,
                             border_width=1, border_color=BORDER)
         card.place(relx=0.5, rely=0.5, anchor="center")
-        self.theme_switch(self.body).place(relx=1.0, x=-24, y=20, anchor="ne")
+        if not picture:
+            self.theme_switch(self.body).place(relx=1.0, x=-24, y=20, anchor="ne")
         inner = ctk.CTkFrame(card, fg_color="transparent", width=width - 64)
         inner.pack(padx=32, pady=30, fill="both")
         return inner
+
+    def _signin_backdrop(self):
+        """The background picture behind the sign-in box, only if turned on in Settings."""
+        key = self.settings.get("background", "none")
+        if not self.settings.get("bg_signin", False) or key == "none" or background_source(key) is None:
+            return False
+        import tkinter as tk
+        from PIL import ImageTk
+        lbl = tk.Label(self.body, bd=0, highlightthickness=0, bg=BG[1] if self.is_dark else BG[0])
+        lbl.place(x=0, y=0, relwidth=1, relheight=1)
+        lbl._job = None
+
+        def paint():
+            lbl._job = None
+            if not lbl.winfo_exists():
+                return
+            w, h = lbl.winfo_width(), lbl.winfo_height()
+            pic = background_picture(key, w, h, self.settings.get("bg_dim", "medium"), self.is_dark)
+            if pic is not None:
+                lbl.image = ImageTk.PhotoImage(pic, master=lbl)
+                lbl.configure(image=lbl.image)
+
+        def resized(_e=None):
+            if lbl._job:
+                lbl.after_cancel(lbl._job)
+            lbl._job = lbl.after(80, paint)
+        lbl.bind("<Configure>", resized)
+        return True
 
     def _brand_header(self, parent):
         top = ctk.CTkFrame(parent, fg_color="transparent")
@@ -1612,6 +2686,9 @@ class HushKeyApp(ctk.CTk):
         self._menu = None
         self._toast_frame = None
         self._folder_form = None
+        bg = self.settings.get("background", "none")
+        if bg != "none" and background_source(bg) is not None:
+            return self._show_main_glass(bg)
 
         root = ctk.CTkFrame(self.body, fg_color="transparent", corner_radius=0)
         root.pack(fill="both", expand=True)
@@ -1642,8 +2719,7 @@ class HushKeyApp(ctk.CTk):
             width=72, height=38, corner_radius=19, fg_color=SURFACE, hover_color=RAISED,
             border_width=1, border_color=BORDER, text_color=TEXT, font=font(14, "bold"))
         self.profile_btn.pack(side="right")
-        primary_button(top, "+  Add login", self.open_add, width=128, height=38).pack(side="right", padx=(0, 10))
-        self.theme_switch(top).pack(side="right", padx=(0, 10))
+        primary_button(top, "+  Add Login", self.open_add, width=128, height=38).pack(side="right", padx=(0, 10))
 
         self.recovery_btn = None
         sync_off = self.syncer is not None and not self.syncer.enabled and self.syncer._session is None
@@ -1682,6 +2758,7 @@ class HushKeyApp(ctk.CTk):
         self.density_btn.set("Compact" if self.compact else "Comfortable")
         self.density_btn.pack(side="right")
 
+        self.art = None
         self.listbox = ctk.CTkScrollableFrame(wrap, fg_color="transparent", corner_radius=0)
         self.listbox.pack(fill="both", expand=True)
 
@@ -1703,6 +2780,29 @@ class HushKeyApp(ctk.CTk):
         ctk.CTkButton(self.rail, text="‹", width=32, height=32, corner_radius=9, command=self.open_panel,
                       fg_color=SURFACE, hover_color=RAISED, border_width=1, border_color=BORDER,
                       text_color=TEXT, font=font(16, "bold")).pack(pady=(20, 0))
+        self.refresh_rows()
+        self._show_sync_state()
+
+    def _show_main_glass(self, bg):
+        """The vault screen with a background picture behind everything."""
+        g = GlassMain(self.body, self, bg, self.settings.get("bg_dim", "medium"),
+                      self.settings.get("see_through", True))
+        g.pack(fill="both", expand=True)
+        self.glass = g
+        self._layout = self._main = g
+        self.art = self.listbox = g.art
+        self.search = g.search
+        self.search.bind("<KeyRelease>", self._search_typed)
+        self._search_job = None
+        self.status = g.stands["status"]
+        self.sync_label = g.stands["sync"] if self.syncer is not None else None
+        self.recovery_btn = g.stands["recovery"]
+        self.form_slot = g.form_slot
+        self.health_ring = None
+        self.profile_btn = "!glass-profile"
+        self._update_slot = None
+        self.panel = self.rail = self._panel_line = None
+        self.update_idletasks()
         self.refresh_rows()
         self._show_sync_state()
 
@@ -1742,7 +2842,7 @@ class HushKeyApp(ctk.CTk):
         self.health_ring.pack(side="left", padx=(10, 10), pady=10)
         words = ctk.CTkFrame(self.health_card, fg_color="transparent")
         words.pack(side="left", fill="x", expand=True)
-        ctk.CTkLabel(words, text="Vault health", font=font(13, "bold"), text_color=TEXT, anchor="w").pack(fill="x")
+        ctk.CTkLabel(words, text="Vault Health", font=font(13, "bold"), text_color=TEXT, anchor="w").pack(fill="x")
         self.health_line = ctk.CTkLabel(words, text="", font=font(12), text_color=MUTED, anchor="w")
         self.health_line.pack(fill="x")
         self.health_tips = ctk.CTkLabel(words, text="", font=font(11), text_color=SUBTLE, anchor="w")
@@ -1773,11 +2873,13 @@ class HushKeyApp(ctk.CTk):
         return row
 
     def _draw_nav(self, entries):
+        if self.glass is not None:
+            return
         for box in (self.nav_box, self.folder_box):
             for w in box.winfo_children():
                 w.destroy()
         favs = sum(1 for e in entries if e["fav"])
-        self._nav_button(self.nav_box, "All logins", len(entries), self.view == "all",
+        self._nav_button(self.nav_box, "All Logins", len(entries), self.view == "all",
                          lambda: self.set_view("all"), icon="▦")
         self._nav_button(self.nav_box, "Favorites", favs, self.view == "favorites",
                          lambda: self.set_view("favorites"), icon="★")
@@ -1846,6 +2948,8 @@ class HushKeyApp(ctk.CTk):
                       font=font(12)).pack(side="left", padx=(6, 0))
         box.name.bind("<Return>", create)
         box.name.bind("<Escape>", lambda _e: self.close_folder_form())
+        if self.glass is not None:
+            self.glass.redraw()
         box.name.focus_set()
 
     def close_folder_form(self):
@@ -1875,7 +2979,7 @@ class HushKeyApp(ctk.CTk):
         self.vault.delete_folder(folder["id"])
         self.view = "all"
         self.refresh_rows()
-        self.toast(f"Folder “{folder['name']}” deleted. Its logins are still in All logins.")
+        self.toast(f"Folder “{folder['name']}” deleted. Its logins are still in All Logins.")
 
     # ---------------------------------------------------------------- health
 
@@ -1901,13 +3005,14 @@ class HushKeyApp(ctk.CTk):
         return cache[key]
 
     def _security_rows(self):
-        """The security report with this session's leak check applied."""
-        return self.vault.security_report(getattr(self, "_leaked_hashes", ()))
+        """The security report (leak results are saved with each login)."""
+        return self.vault.security_report()
 
     def _update_health(self, report):
         score = health_score(self.vault.entry_count, report)
         self._score = score
         open_tips = [r for r in report if self._tip_visible(r, ignore_setting=True)]
+        self._open_tips = len(open_tips)
         if getattr(self, "health_ring", None) is not None and self.health_ring.winfo_exists():
             self.health_ring.configure(image=self._health_image(score), text=str(score))
             word = "Great" if score >= 90 else ("Good" if score >= 70 else ("Fair" if score >= 50 else "Needs care"))
@@ -1958,6 +3063,8 @@ class HushKeyApp(ctk.CTk):
         self.refresh_rows(keep_scroll=True)
 
     def _style_users_btn(self):
+        if self.glass is not None:
+            return self.glass.redraw()
         on = self.settings.get("show_usernames", False)
         self.users_btn.configure(text="  Hide usernames" if on else "  Show usernames",
                                  fg_color=ACCENT_SOFT if on else "transparent",
@@ -1975,8 +3082,11 @@ class HushKeyApp(ctk.CTk):
                 or not self.listbox.winfo_exists():
             return
         self._search_job = None
-        for w in self.listbox.winfo_children():
-            w.destroy()
+        if self.art is not None:
+            self.art.clear(keep_scroll)
+        else:
+            for w in self.listbox.winfo_children():
+                w.destroy()
         self.rows = {}
         self.more_btn = None
         entries = self.vault.list_entries()
@@ -1987,11 +3097,13 @@ class HushKeyApp(ctk.CTk):
         self._report = {r["id"]: r for r in report}
         self._draw_nav(entries)
         self._update_health(report)
+        if self.glass is not None:
+            return self._refresh_glass(entries, highlight)
 
         folder = None
         if self.view.startswith("folder:"):
             folder = next((f for f in self.vault.folders() if f["id"] == self.view[7:]), None)
-        title = "Favorites" if self.view == "favorites" else (folder["name"] if folder else "All logins")
+        title = "Favorites" if self.view == "favorites" else (folder["name"] if folder else "All Logins")
         self.title_lbl.configure(text=title)
         for w in self.folder_tools.winfo_children():
             w.destroy()
@@ -2018,10 +3130,34 @@ class HushKeyApp(ctk.CTk):
             return
         self._draw_page(highlight)
 
+    def _refresh_glass(self, entries, highlight=None):
+        query = self.search.get().strip().lower()
+        folder = None
+        if self.view.startswith("folder:"):
+            folder = next((f for f in self.vault.folders() if f["id"] == self.view[7:]), None)
+        items = [e for e in entries if query in e["title"].lower()]
+        if self.view == "favorites":
+            items = [e for e in items if e["fav"]]
+        elif folder:
+            items = [e for e in items if e["folder"] == folder["id"]]
+        self._list_items = items
+        self._shown = 0
+        self._render_token = object()
+        self.glass.redraw()
+        if not items:
+            self._empty_state(len(entries), query, folder)
+            return self.art.finish()
+        if highlight and highlight not in [e["id"] for e in items[:self.PAGE_SIZE]]:
+            items.sort(key=lambda e: e["id"] != highlight)
+        self._draw_page(highlight)
+
     def _empty_state(self, total, query, folder):
-        box = ctk.CTkFrame(self.listbox, fg_color="transparent", corner_radius=14, border_width=1,
-                           border_color=BORDER)
-        box.pack(fill="x", pady=(10, 0), padx=(0, 6))
+        if self.art is not None:
+            box = self.art.empty_holder()
+        else:
+            box = ctk.CTkFrame(self.listbox, fg_color="transparent", corner_radius=14, border_width=1,
+                               border_color=BORDER)
+            box.pack(fill="x", pady=(10, 0), padx=(0, 6))
         if total == 0 and getattr(self, "_new_vault", False):
             # the welcome only shows right after making a new vault
             ctk.CTkLabel(box, text="Your vault is ready", font=font(20, "bold"), text_color=TEXT).pack(pady=(26, 4))
@@ -2030,7 +3166,7 @@ class HushKeyApp(ctk.CTk):
                          wraplength=440).pack()
             row = ctk.CTkFrame(box, fg_color="transparent")
             row.pack(pady=(16, 6))
-            primary_button(row, "+  Add your first login", self.open_add, height=40, width=190).pack(side="left")
+            primary_button(row, "+  Add Your First Login", self.open_add, height=40, width=214).pack(side="left")
             ghost_button(row, "Import", self.open_import, height=40, width=100).pack(side="left", padx=(10, 0))
 
             def skip():
@@ -2039,7 +3175,7 @@ class HushKeyApp(ctk.CTk):
             link_button(box, "Skip for now", skip, size=12, color=SUBTLE).pack(pady=(0, 20))
             return
         if total == 0:
-            text, sub = "No logins yet", "Click “+ Add login”, or import them from Google or another app."
+            text, sub = "No logins yet", "Click “+ Add Login”, or import them from Google or another app."
         elif query:
             text, sub = "No logins match your search", "Try a different name."
         elif self.view == "favorites":
@@ -2050,7 +3186,9 @@ class HushKeyApp(ctk.CTk):
         ctk.CTkLabel(box, text=sub, font=font(13), text_color=MUTED).pack(pady=(0, 28))
 
     def _draw_page(self, highlight=None):
-        if self.more_btn is not None and self.more_btn.winfo_exists():
+        if self.art is not None:
+            self.art.remove_more()
+        elif self.more_btn is not None and self.more_btn.winfo_exists():
             self.more_btn.destroy()
         self.more_btn = None
         end = min(self._shown + self.PAGE_SIZE, len(self._list_items))
@@ -2067,7 +3205,11 @@ class HushKeyApp(ctk.CTk):
             self.after(1, lambda: self._draw_batch(stop, end, token, highlight))
             return
         left = len(self._list_items) - self._shown
-        if left > 0:
+        if self.art is not None:
+            if left > 0:
+                self.art.add_more(f"Show {min(left, self.PAGE_SIZE)} more  ({left} not shown)", self._draw_page)
+            self.art.finish()
+        elif left > 0:
             self.more_btn = ghost_button(self.listbox, f"Show {min(left, self.PAGE_SIZE)} more  "
                                                        f"({left} not shown)", self._draw_page, height=40)
             self.more_btn.pack(pady=(8, 12))
@@ -2075,6 +3217,15 @@ class HushKeyApp(ctk.CTk):
             self.select(highlight)
 
     def _make_row(self, e):
+        if self.art is not None:
+            r = self._report.get(e["id"])
+            show_user = self.settings.get("show_usernames", False)
+            info = {"user": (self.vault.username(e["id"]) or "(no username)") if show_user else "••••••••",
+                    "note": (self._tip_text(r)[0], self._tip_color(r)) if self._tip_visible(r) else None,
+                    "remove": self.view.startswith("folder:")}
+            self.art.add_row(e, info)
+            self.rows[e["id"]] = {"art": True}
+            return
         entry_id, compact = e["id"], self.compact
         on = entry_id == self.sel_id
         row = ctk.CTkFrame(self.listbox, fg_color=ACCENT_SOFT if on else SURFACE,
@@ -2131,11 +3282,14 @@ class HushKeyApp(ctk.CTk):
     def select(self, entry_id):
         self._close_menu()
         old = self.rows.get(self.sel_id)
-        if old and old["frame"].winfo_exists():
+        if self.art is not None and self.art.winfo_exists():
+            self.art.set_selected(self.sel_id, entry_id)
+            old = None
+        if old and "frame" in old and old["frame"].winfo_exists():
             old["frame"].configure(fg_color=SURFACE, border_color=BORDER)
         self.sel_id = entry_id
         self.settings["panel_open"] = True
-        new = self.rows.get(entry_id)
+        new = None if self.art is not None else self.rows.get(entry_id)
         if new and new["frame"].winfo_exists():
             new["frame"].configure(fg_color=ACCENT_SOFT, border_color=ACCENT)
         self._draw_panel()
@@ -2230,6 +3384,8 @@ class HushKeyApp(ctk.CTk):
     # ---------------------------------------------------------------- details panel
 
     def _draw_panel(self):
+        if self.glass is not None:
+            return self.glass.redraw()
         for w in self.panel.winfo_children():
             w.destroy()
         self.panel.grid_forget()
@@ -2522,7 +3678,7 @@ class HushKeyApp(ctk.CTk):
 
     def open_add(self):
         self._close_menu()
-        EntryDialog(self, "Add a login", None, on_save=self._save_new)
+        EntryDialog(self, "Add a Login", None, on_save=self._save_new)
 
     def _save_new(self, title, username, password, icon):
         new_id = self.vault.add(title, username, password, icon)
@@ -2554,7 +3710,7 @@ class HushKeyApp(ctk.CTk):
             self.refresh_rows(keep_scroll=True)
             self._status(f"Deleted “{current['title']}”.", MUTED)
 
-        EntryDialog(self, "Edit login", current, on_save=save, on_delete=delete, fresh=fresh)
+        EntryDialog(self, "Edit Login", current, on_save=save, on_delete=delete, fresh=fresh)
 
     def open_change_master(self):
         ChangeMasterWarning(self)
@@ -2644,15 +3800,20 @@ class HushKeyApp(ctk.CTk):
         ctk.CTkLabel(words, text=title, font=font(14, "bold"), text_color=TEXT, anchor="w").pack(fill="x")
         ctk.CTkLabel(words, text=sub, font=font(12), text_color=MUTED, anchor="w", justify="left",
                      wraplength=430).pack(fill="x")
-        var = ctk.BooleanVar(value=self.settings.get(key, default))
+        state = {"on": bool(self.settings.get(key, default))}
+        toggle = ctk.CTkButton(card, text="", image=toggle_image(state["on"]), width=52, height=30,
+                               fg_color="transparent", hover=False, cursor="hand2")
 
         def flip():
-            self.settings[key] = bool(var.get())
+            state["on"] = not state["on"]
+            toggle.configure(image=toggle_image(state["on"]))
+            self.settings[key] = state["on"]
             save_settings(self.settings, self.data_dir)
             if on_change:
                 on_change()
-        ctk.CTkSwitch(card, text="", variable=var, command=flip, progress_color=ACCENT, button_color="#FFFFFF",
-                      button_hover_color="#F1F1F1", fg_color=TRACK, width=48).pack(side="right", padx=14)
+        toggle.configure(command=flip)
+        toggle.pack(side="right", padx=12)
+        card.toggle = toggle
         return card
 
     def _settings_general(self, c):
@@ -2699,6 +3860,7 @@ class HushKeyApp(ctk.CTk):
             ctk.set_appearance_mode({"light": "light", "dark": "dark"}.get(v, "system"))
             self.show_settings("appearance")
         self._choice_row(c, [("dark", "Dark"), ("light", "Light"), ("system", "Match my computer")], mode, theme)
+        self._settings_style(c)
         current = self.settings.get("accent", "green")
         name = next((a[1] for a in ACCENTS if a[0] == current), "Green")
         self._section(c, f"Accent color · {name}", "Buttons and highlights use your color. "
@@ -2712,6 +3874,7 @@ class HushKeyApp(ctk.CTk):
                           border_color=TEXT if on else BG, text_color=("#FFFFFF", "#0B1116"),
                           font=font(15, "bold"), command=lambda k=key: self.set_accent(k)).grid(
                 row=i // 7, column=i % 7, padx=4, pady=4)
+        self._settings_background(c)
         self._section(c, "Density", "Comfortable gives each login more room. Compact fits more on screen.")
         dens = "compact" if self.compact else "comfortable"
 
@@ -2729,6 +3892,82 @@ class HushKeyApp(ctk.CTk):
                 side="left", padx=(0, 6))
             ctk.CTkLabel(legend, text=STRENGTH_LABELS[i], font=font(12), text_color=MUTED).pack(
                 side="left", padx=(0, 14))
+
+    def _settings_style(self, c):
+        global STYLE
+        style = self.settings.get("style", "basic")
+        self._section(c, "Style", "Basic has soft rounded corners. Pixel gives HushKey square, retro corners "
+                                  "and the pixel font.")
+
+        def set_style(v):
+            global STYLE
+            self.settings["style"] = v
+            if v == "pixel" and self.settings.get("font", "poppins") == "poppins":
+                self.settings["font"] = "pixel"
+            elif v == "basic" and self.settings.get("font") == "pixel":
+                self.settings["font"] = "poppins"
+            save_settings(self.settings, self.data_dir)
+            STYLE = v
+            set_font(self.settings.get("font", "poppins"))
+            self.show_settings("appearance")
+        self._choice_row(c, [("basic", "Basic"), ("pixel", "Pixel")], style, set_style)
+        cur = self.settings.get("font", "poppins")
+        self._section(c, "Font")
+
+        def set_fnt(v):
+            self.settings["font"] = v
+            save_settings(self.settings, self.data_dir)
+            set_font(v)
+            self.show_settings("appearance")
+        row = ctk.CTkFrame(c, fg_color="transparent")
+        row.pack(fill="x", pady=(10, 0))
+        for i, (key, family, _stem) in enumerate(FONT_CHOICES):
+            on = key == cur
+            fam = family if family in _AVAILABLE else FAMILY
+            ctk.CTkButton(row, text=FONT_LABELS[key], command=lambda v=key: set_fnt(v), height=40, width=110,
+                          corner_radius=10, fg_color=ACCENT if on else SURFACE,
+                          hover_color=ACCENT_HOVER if on else RAISED, border_width=1,
+                          border_color=ACCENT if on else BORDER, text_color=ACCENT_INK if on else TEXT,
+                          font=ctk.CTkFont(family=fam, size=14, weight="bold" if on else "normal")
+                          if fam else font(14)).grid(row=0, column=i, padx=(0, 6), pady=3, sticky="w")
+
+    def _settings_background(self, c):
+        cur = self.settings.get("background", "none")
+        name = dict(BACKGROUNDS).get(cur, "Plain")
+        self._section(c, f"Background · {name}", "A picture behind your vault. It fades darker in dark mode and "
+                                                 "lighter in light mode, so everything stays easy to read.")
+        grid = ctk.CTkFrame(c, fg_color="transparent")
+        grid.pack(anchor="w", pady=(10, 0))
+
+        def pick(key):
+            self.settings["background"] = key
+            save_settings(self.settings, self.data_dir)
+            self.show_settings("appearance")
+        for i, (key, label) in enumerate(BACKGROUNDS):
+            on = key == cur
+            ctk.CTkButton(grid, text=label, image=background_thumb(key), compound="top", width=132, height=96,
+                          corner_radius=12, fg_color=ACCENT_SOFT if on else SURFACE,
+                          hover_color=ACCENT_SOFT_HOVER if on else RAISED, border_width=2,
+                          border_color=ACCENT if on else BORDER, text_color=ACCENT if on else TEXT,
+                          font=font(12, "bold" if on else "normal"),
+                          command=lambda k=key: pick(k)).grid(row=i // 4, column=i % 4, padx=(0, 8), pady=4)
+        if cur == "none":
+            return
+        self._section(c, "Dim the picture", "More dim makes your logins easier to read.")
+        dim = self.settings.get("bg_dim", "medium")
+
+        def set_dim(v):
+            self.settings["bg_dim"] = v
+            save_settings(self.settings, self.data_dir)
+            self.show_settings("appearance")
+        self._choice_row(c, [("low", "Low"), ("medium", "Medium"), ("high", "High")], dim, set_dim)
+        self._switch_row(c, "See-through boxes", "Show the picture through your logins, the sidebar and the "
+                                                 "details panel. Each box keeps an outline and its text a soft "
+                                                 "shadow, so it's always readable. Off: solid boxes over the picture.",
+                         "see_through", default=True)
+        self._switch_row(c, "Show it on the sign-in screen", "Off: the sign-in screen stays plain. "
+                                                             "The sign-in box itself is always solid.",
+                         "bg_signin", default=False)
 
     def set_accent(self, key):
         self.settings["accent"] = key
@@ -2756,7 +3995,7 @@ class HushKeyApp(ctk.CTk):
             self._leak_done = False
             self.start_leak_check()
         else:
-            self._leaked_hashes = set()
+            pass   # saved results stay until the check runs again
 
     def _settings_sync(self, c):
         if not self.cloud.configured:
@@ -2783,9 +4022,9 @@ class HushKeyApp(ctk.CTk):
 
     def _settings_import(self, c):
         self._section(c, "Import", "Bring your logins over from Google, Chrome, or another password manager.")
-        ghost_button(c, "Import logins", self.open_import, height=40, width=160).pack(anchor="w", pady=(10, 0))
+        ghost_button(c, "Import Logins", self.open_import, height=40, width=160).pack(anchor="w", pady=(10, 0))
         self._section(c, "Export", "Save an encrypted HushKey backup, or a spreadsheet (CSV) file.")
-        ghost_button(c, "Export logins", self.open_export, height=40, width=160).pack(anchor="w", pady=(10, 0))
+        ghost_button(c, "Export Logins", self.open_export, height=40, width=160).pack(anchor="w", pady=(10, 0))
 
     def _settings_about(self, c):
         row = ctk.CTkFrame(c, fg_color="transparent")
@@ -2825,12 +4064,15 @@ class HushKeyApp(ctk.CTk):
 
         def done(ids):
             self._leak_busy = False
-            if self.vault is not vault:
+            if self.vault is not vault or not vault.is_unlocked:
                 return
             self._leak_done = True
-            self._leaked_hashes = {hashes[i] for i in ids}
             self._leak_checked = time.time()
-            self._refresh_current()
+            # saved with the logins, so the score never jumps on the next open
+            current = vault.password_hashes()
+            still = {i for i in ids if current.get(i) == hashes.get(i)}   # skip passwords changed meanwhile
+            if vault.set_leaked(still):
+                self._refresh_current()   # only redraw if a result actually changed
 
         def failed(_exc):
             self._leak_busy = False   # offline: try again next time
@@ -3073,6 +4315,8 @@ class HushKeyApp(ctk.CTk):
 
     def _show_update_link(self):
         """A small gold 'update' link on the current screen."""
+        if getattr(self, "glass", None) is not None and self.glass.winfo_exists():
+            return self.glass.redraw()
         slot = getattr(self, "_update_slot", None)
         if self.update_release is None or slot is None or not slot.winfo_exists() or slot.winfo_children():
             return
@@ -3233,7 +4477,7 @@ class EntryDialog(Dialog):
             ctk.CTkButton(row, text="Delete", command=self.delete, width=90, height=44, corner_radius=10,
                           fg_color="transparent", hover_color=DANGER_SOFT, border_width=1,
                           border_color=DANGER_BORDER, text_color=DANGER, font=font(14)).pack(side="left")
-        primary_button(row, "Save login", self.save, width=130, height=44).pack(side="right")
+        primary_button(row, "Save Login", self.save, width=130, height=44).pack(side="right")
         ghost_button(row, "Cancel", self.destroy, width=100, height=44).pack(side="right", padx=(0, 10))
 
         if current:
@@ -3286,7 +4530,7 @@ class EntryDialog(Dialog):
             self.bar.update_for(self.pw.get())
         new = getattr(self, "new_password", "")
         if new and self.pw.get() == new:
-            self.gen_hint.configure(text="Pasted. Click Save login to keep it, and change it on the website "
+            self.gen_hint.configure(text="Pasted. Click Save Login to keep it, and change it on the website "
                                          "too.", text_color=ACCENT)
 
     def save(self):
@@ -3935,7 +5179,33 @@ def selftest() -> int:
         lambda: require([w for w in app.winfo_children() if isinstance(w, ChangeMasterWarning)],
                         "master password warning opens"),
         lambda: [w.destroy() for w in app.winfo_children() if isinstance(w, ctk.CTkToplevel)],
+        lambda: require(all(background_source(k) is not None for k, _ in BACKGROUNDS[1:]),
+                        "all backgrounds bundled"),
+        lambda: app.settings.update(background="soccer_stadium", see_through=True, bg_dim="high"),
         lambda: app.show_main(),
+        lambda: require(app.glass is not None and len(app.rows) >= 1, "logins show over a background"),
+        lambda: app.select(app.vault.list_titles()[0][0]),
+        lambda: app._secret_widgets["pass"][1].invoke(),
+        lambda: require(app._secret_widgets["pass"][1].cget("text") == "Hide", "Show works on the picture screen"),
+        lambda: app.hide_revealed(),
+        lambda: app.toggle_menu(),
+        lambda: app._close_menu(),
+        lambda: app.open_folder_form(),
+        lambda: app.close_folder_form(),
+        lambda: app.close_panel(),
+        lambda: app.open_panel(),
+        lambda: app.set_density("Compact"),
+        lambda: app.set_density("Comfortable"),
+        lambda: app.settings.update(style="pixel", font="pixel", bg_signin=True),
+        lambda: (globals().update(STYLE="pixel"), set_font("pixel"), app.show_settings("appearance")),
+        lambda: app.show_main(),
+        lambda: (globals().update(STYLE="basic"), set_font("poppins"), app.settings.update(style="basic",
+                                                                                           font="poppins")),
+        lambda: app.toggle_theme(),
+        lambda: app.toggle_theme(),
+        lambda: app.settings.update(background="none", see_through=False),
+        lambda: app.show_main(),
+        lambda: require(app.art is None, "plain list without a background"),
         lambda: app.open_add(),
         lambda: dialog().generate(),
         lambda: dialog().logo.toggle(),

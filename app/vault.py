@@ -628,6 +628,7 @@ class Vault:
         if not same_pw:   # a new password: earlier "Not now" choices start fresh
             meta.pop("snooze", None)
             meta.pop("mute", None)
+            meta.pop("leaked", None)   # the old password's leak result doesn't apply to the new one
         new = self._encrypt_entry(title.strip(), username.strip(), password, icon, entry_id,
                                   old.get("created"), url=self._url(old), meta=meta,
                                   pw_changed=old.get("pw_changed") if same_pw else None)
@@ -733,6 +734,31 @@ class Vault:
         return {e["id"]: hashlib.sha1(self._dec(e["password"]).encode("utf-8")).hexdigest().upper()
                 for e in self._data["entries"]}
 
+    def set_leaked(self, leaked_ids) -> bool:
+        """Save the leak check's result with each login (encrypted), so the
+        Vault health score is right the moment HushKey opens instead of
+        jumping when the check finishes. Saves only if something changed."""
+        self._require_unlocked()
+        leaked_ids, changed = set(leaked_ids), False
+        for e in self._data["entries"]:
+            m = self._meta(e)
+            stamp = e.get("pw_changed") or e.get("created")
+            want = stamp if e["id"] in leaked_ids else None
+            if m.get("leaked") != want:
+                if want is None:
+                    m.pop("leaked", None)
+                else:
+                    m["leaked"] = want
+                if m:
+                    e["meta"] = self._enc(json.dumps(m, sort_keys=True))
+                else:
+                    e.pop("meta", None)
+                e["updated"] = _now()
+                changed = True
+        if changed:
+            self._save()
+        return changed
+
     def username(self, entry_id: str) -> str:
         """Decrypt just the username (for "Show usernames")."""
         self._require_unlocked()
@@ -752,8 +778,11 @@ class Vault:
             m = self._meta(e)
             rows[e["id"]] = {"id": e["id"], "title": self._dec(e["title"]), "icon": self._icon(e),
                              "score": password_strength(pw)[0], "reused_with": [],
-                             "leaked": bool(leaked_hashes) and hashlib.sha1(
-                                 pw.encode("utf-8")).hexdigest().upper() in leaked_hashes,
+                             # a saved leak result counts until that password is changed
+                             "leaked": (m.get("leaked") is not None
+                                        and m.get("leaked") == (e.get("pw_changed") or e.get("created")))
+                                       or (bool(leaked_hashes) and hashlib.sha1(
+                                           pw.encode("utf-8")).hexdigest().upper() in leaked_hashes),
                              "snooze": float(m.get("snooze") or 0), "mute": bool(m.get("mute"))}
         for ids in by_pw.values():
             if len(ids) > 1:

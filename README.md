@@ -5,12 +5,12 @@
 <p align="center">A simple, private password manager for <b>Windows and Mac</b>.<br>Your logins are encrypted on your computer, and only you can open them.</p>
 
 <p align="center">
-  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.11 for Windows" src="https://img.shields.io/badge/Download_v2.0.11_for-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI0ZGRkZGRiIgZD0iTTAgMGgxMS4zNzd2MTEuMzcySDBabTEyLjYyMyAwSDI0djExLjM3MkgxMi42MjNaTTAgMTIuNjIzaDExLjM3N1YyNEgwWm0xMi42MjMgMEgyNFYyNEgxMi42MjNaIi8%2BPC9zdmc%2B&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.12 for Windows" src="https://img.shields.io/badge/Download_v2.0.12_for-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI0ZGRkZGRiIgZD0iTTAgMGgxMS4zNzd2MTEuMzcySDBabTEyLjYyMyAwSDI0djExLjM3MkgxMi42MjNaTTAgMTIuNjIzaDExLjM3N1YyNEgwWm0xMi42MjMgMEgyNFYyNEgxMi42MjNaIi8%2BPC9zdmc%2B&logoColor=white" height="44"></a>
   &nbsp;&nbsp;
-  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.11 for Mac" src="https://img.shields.io/badge/Download_v2.0.11_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.12 for Mac" src="https://img.shields.io/badge/Download_v2.0.12_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
 </p>
 
-<p align="center"><b>Latest version: v2.0.11</b> · <a href="../../releases">All releases</a></p>
+<p align="center"><b>Latest version: v2.0.12</b> · <a href="../../releases">All releases</a></p>
 
 ## Download
 
@@ -42,7 +42,7 @@ Older macOS: right-click HushKey → **Open** → **Open**.
 ## How to use it
 
 1. **Create a vault** with your email and a master password. You'll get an 8-digit code by email to confirm it's you.
-2. Click **+ Add login** and type a name, username and password. Or click **Generate a strong password**, then **Copy** it and paste it into the Password box.
+2. Click **+ Add Login** and type a name, username and password. Or click **Generate a strong password**, then **Copy** it and paste it into the Password box.
 3. **Click a login** to see its details. Usernames and passwords stay hidden until you click **Show**. **Copy** clears itself from your clipboard after 20 seconds.
 4. **Organize** with the star (Favorites) and **Folders** (click **+** in the sidebar).
 5. Everything else, like Settings, Security tips, Import, Export and Sign out, is in the menu at the top right.
@@ -59,7 +59,7 @@ Older macOS: right-click HushKey → **Open** → **Open**.
 - **Import** from Google, Chrome, Bitwarden, LastPass, 1Password, Apple Passwords, Edge, Firefox or Dashlane. **Export** to an encrypted backup or a CSV file.
 - **Auto-lock** after the time you choose (1 minute to 3 hours, or never).
 - **Remember this device** for 30 days so it opens straight to your vault.
-- **Light and dark mode**, 21 accent colors, and a compact view.
+- **Make it yours:** light and dark mode, 21 accent colors, Basic or Pixel style, 4 fonts, a compact view, and 15 pixel-art backgrounds.
 - **Automatic updates.**
 
 ## Security
@@ -82,6 +82,24 @@ HushKey is built with users first. Your privacy matters more than any feature.
 
 ## What's new
 
+### v2.0.12
+
+**New**
+- **New logo:** a shorter, thinner key on the Peaceful face, so the key's details stay clear even when the icon is small. Used for the app icon and inside the app.
+- **Backgrounds:** pick one of 15 pixel-art pictures in Settings › Appearance: Cherry Blossom, Princess Castle, Ocean Dusk, Fairy Forest, Aurora Peaks, Ramen Shop, Samurai Sunset, Knight's Keep, Neon City, Space Voyage, Dragon Mountain, Soccer Stadium, Sunny Beach, Race Track and Sky Ruins. Each choice shows a preview.
+- **See-through vault:** the picture shows behind the whole vault screen: the sidebar, your logins and the details panel. Boxes keep an outline and text keeps a soft shadow, so everything stays readable. Prefer solid boxes? Turn off **See-through boxes**.
+- **Dim the picture:** Low, Medium or High. It fades darker in dark mode and lighter in light mode.
+- **Sign-in screen** stays plain by default, with a solid sign-in box. You can turn on the picture there too.
+- **Styles:** Basic (rounded) or Pixel (square, retro corners with a pixel font).
+- **Fonts:** Poppins, DM Sans, Nunito or Pixel.
+- Smooth with lots of logins, and when you resize, maximize or minimize the window: the picture is prepared once per window size and stays still while you scroll.
+
+**Fixed**
+- The Vault Health score could jump to a very different number for a moment and then go back. It now stays steady from the moment HushKey opens.
+- On/off switches could be hard to read (the knob blended into the switch). They now always show clearly whether they're on or off.
+- Changing a login's password now clears its old data-leak warning right away.
+- The light/dark switch was removed from the vault screen; it's in Settings › Appearance.
+
 ### v2.0.11
 
 **New**
@@ -96,7 +114,7 @@ HushKey is built with users first. Your privacy matters more than any feature.
 ### v2.0.10
 
 **New**
-- **New look:** a sidebar with All logins, Favorites, Folders and a Vault health score.
+- **New look:** a sidebar with All Logins, Favorites, Folders and a Vault Health score.
 - **Details panel** opens when you click a login, with Show and Copy for the username and password, a colored strength bar, and Edit or Delete. The arrow hides it, and a small tab brings it back.
 - **New logo,** inside the app and as the app icon.
 - **Favorites:** star any login, then find it under Favorites.
@@ -178,8 +196,8 @@ python app/app.py
 ```
 
 - **Folders:** `app/` holds the code, `tests/` the tests (`python -m unittest discover -s tests`), and `packaging/` the build and installer scripts. `supabase/` sets up the database, and `docs/` has the [email recovery setup](docs/SETUP_EMAIL_RECOVERY.md).
-- **Publishing:** upload your changes, then go to **Releases → Draft a new release**, use the next tag (like `v2.0.12`), and click **Publish**. GitHub tests and builds both apps, and everyone gets the update automatically.
+- **Publishing:** upload your changes, then go to **Releases → Draft a new release**, use the next tag (like `v2.0.13`), and click **Publish**. GitHub tests and builds both apps, and everyone gets the update automatically.
 
 ## Credits
 
-Font: [Poppins](https://fonts.google.com/specimen/Poppins) (Open Font License). App logos: [Simple Icons](https://simpleicons.org) (CC0). Brand logos belong to their owners. Leak check: [Have I Been Pwned](https://haveibeenpwned.com/Passwords).
+Fonts: [Poppins](https://fonts.google.com/specimen/Poppins), [DM Sans](https://fonts.google.com/specimen/DM+Sans), [Nunito](https://fonts.google.com/specimen/Nunito) and [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans) (Open Font License). App logos: [Simple Icons](https://simpleicons.org) (CC0). Brand logos belong to their owners. Leak check: [Have I Been Pwned](https://haveibeenpwned.com/Passwords).

@@ -3,7 +3,7 @@
 ; installs per-user (no admin prompt) with a Start Menu shortcut.
 
 #ifndef MyAppVersion
-  #define MyAppVersion "2.0.11"
+  #define MyAppVersion "2.0.12"
 #endif
 
 [Setup]

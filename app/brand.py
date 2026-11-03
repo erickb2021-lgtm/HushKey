@@ -5,8 +5,9 @@ The app draws its own logo when it starts, so it can never go missing the
 way a separate image file can. packaging/make_icons.py uses the same drawing
 to make the .ico (Windows) and .icns (Mac) app icons.
 
-v2.0.10 logo: the "Peaceful" face (closed eyes with a soft lid line) and a
-key with two teeth, a groove, a collar and a ringed handle.
+v2.0.12 logo: the "Peaceful" face (closed eyes with a soft lid line) and a
+short, thin key with two rounded teeth and a ring handle, so its details stay
+visible even when the logo is small.
 """
 
 import math
@@ -26,10 +27,15 @@ def _quad(p0, p1, p2, steps=10):
             for t in (i / steps for i in range(1, steps + 1))]
 
 
-# The key's blade, in a 200x200 drawing: rounded tip, two teeth on the right.
-_BLADE = ([(95, 105)] + _quad((95, 105), (95, 98), (100, 97)) + _quad((100, 97), (105, 98), (105, 105))
-          + [(105, 106), (119, 106), (119, 114), (105, 114), (105, 120), (115, 120), (115, 128),
-             (105, 128), (105, 150), (95, 150)])
+def _semi(cx, cy, r, a0, a1, steps=12):
+    return [(cx + r * math.cos(math.radians(a0 + (a1 - a0) * i / steps)),
+             cy + r * math.sin(math.radians(a0 + (a1 - a0) * i / steps))) for i in range(steps + 1)]
+
+
+# The key's blade, in a 200x200 drawing (v2.0.12 "soft & rounded", shorter and thinner so it
+# stays clear at small sizes): rounded tip, two rounded teeth on the right.
+_BLADE = (_semi(100, 105, 5, 180, 360) + [(105, 107)] + _semi(113, 110.5, 3.5, -90, 90)
+          + [(105, 114), (105, 119)] + _semi(110, 122.5, 3.5, -90, 90) + [(105, 126), (105, 143), (95, 143)])
 
 
 def draw_logo(size: int = 256, tile: bool = True, light: bool = False) -> Image.Image:
@@ -65,7 +71,7 @@ def draw_logo(size: int = 256, tile: bool = True, light: bool = False) -> Image.
         d.rounded_rectangle([0, 0, big - 1, big - 1], radius=int(44 * s), fill=GREEN)
 
     # face + Peaceful eyes (closed, with a soft lid line underneath)
-    circle(100, 88, 54, outline=ink, width=11)
+    circle(100, 88, 48.5, outline=ink, width=11)
     for cx in (81, 119):
         stroke_arc(cx, 74, 11, 9, 30, 150, 6, ink)
         stroke_arc(cx, 74, 11, 13, 40, 140, 3, ink)
@@ -76,11 +82,7 @@ def draw_logo(size: int = 256, tile: bool = True, light: bool = False) -> Image.
     for p in blade:
         d.ellipse([p[0] - 2.5 * s, p[1] - 2.5 * s, p[0] + 2.5 * s, p[1] + 2.5 * s], fill=gap)
     d.polygon(blade, fill=ink)
-    d.line([pt(100, 105), pt(100, 146)], fill=gap, width=max(1, int(round(2 * s))))   # groove
-    rounded(86, 147, 114, 160, 5, gap)                                                 # collar
-    rounded(88, 149, 112, 158, 3, ink)
-    circle(100, 173, 17.5, fill=gap)                                                   # ring
-    circle(100, 173, 15, fill=ink)
-    circle(100, 173, 11.25, outline=gap, width=1.5)
-    circle(100, 173, 6, fill=gap)
+    circle(100, 157, 16, fill=gap)                                                     # ring
+    circle(100, 157, 14.25, fill=ink)
+    circle(100, 157, 6.75, fill=gap)
     return img.resize((size, size), Image.LANCZOS)

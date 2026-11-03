@@ -114,6 +114,19 @@ class OrganizeTests(unittest.TestCase):
         self.assertEqual(health_score(self.v.entry_count, self.v.security_report()), 100)
 
 
+class StableScoreTests(OrganizeTests):
+    def test_score_is_right_the_moment_the_vault_opens(self):
+        before = health_score(self.v.entry_count, self.v.security_report())
+        self.assertTrue(self.v.set_leaked({self.bank}))       # the leak check found one
+        after = health_score(self.v.entry_count, self.v.security_report())
+        self.assertLess(after, before)
+        v2 = self.reopen()                                     # next time HushKey opens...
+        self.assertEqual(health_score(v2.entry_count, v2.security_report()), after)   # ...no jump
+        self.assertFalse(v2.set_leaked({self.bank}))           # same result again: nothing saved
+        v2.update(self.bank, "Bank", "jdoe", "a-brand-new-Pa55word!")
+        self.assertNotIn(self.bank, {r["id"] for r in v2.security_report() if r["kind"] == "leaked"})
+
+
 class LeakCheckTests(unittest.TestCase):
     def test_only_five_characters_are_sent(self):
         asked = []
