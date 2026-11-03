@@ -5,12 +5,12 @@
 <p align="center">A simple, private password manager for <b>Windows and Mac</b>.<br>Your logins are encrypted on your computer, and only you can open them.</p>
 
 <p align="center">
-  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.13 for Windows" src="https://img.shields.io/badge/Download_v2.0.13_for-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI0ZGRkZGRiIgZD0iTTAgMGgxMS4zNzd2MTEuMzcySDBabTEyLjYyMyAwSDI0djExLjM3MkgxMi42MjNaTTAgMTIuNjIzaDExLjM3N1YyNEgwWm0xMi42MjMgMEgyNFYyNEgxMi42MjNaIi8%2BPC9zdmc%2B&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.14 for Windows" src="https://img.shields.io/badge/Download_v2.0.14_for-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI0ZGRkZGRiIgZD0iTTAgMGgxMS4zNzd2MTEuMzcySDBabTEyLjYyMyAwSDI0djExLjM3MkgxMi42MjNaTTAgMTIuNjIzaDExLjM3N1YyNEgwWm0xMi42MjMgMEgyNFYyNEgxMi42MjNaIi8%2BPC9zdmc%2B&logoColor=white" height="44"></a>
   &nbsp;&nbsp;
-  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.13 for Mac" src="https://img.shields.io/badge/Download_v2.0.13_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.14 for Mac" src="https://img.shields.io/badge/Download_v2.0.14_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
 </p>
 
-<p align="center"><b>Latest version: v2.0.13</b> · <a href="../../releases">All releases</a></p>
+<p align="center"><b>Latest version: v2.0.14</b> · <a href="../../releases">All releases</a></p>
 
 ## Download
 
@@ -81,6 +81,16 @@ HushKey is built with users first. Your privacy matters more than any feature.
 - The Mac app needs Apple Silicon (M1 or newer).
 
 ## What's new
+
+### v2.0.14
+
+**New**
+- **Faster Appearance settings:** the page opens about twice as fast, and picking a color, font, background, dim level or theme changes it right away, without redrawing the whole page.
+- Clicking between logins on a background is about twice as fast: only the details panel redraws.
+
+**Fixed**
+- Picking something in Appearance made the screen flash dark for a moment. Settings pages now switch without going blank.
+- Animations could stutter. The details panel now slides its contents instead of resizing, and the screen fade is shorter and lighter.
 
 ### v2.0.13
 
@@ -209,7 +219,7 @@ python app/app.py
 ```
 
 - **Folders:** `app/` holds the code, `tests/` the tests (`python -m unittest discover -s tests`), and `packaging/` the build and installer scripts. `supabase/` sets up the database, and `docs/` has the [email recovery setup](docs/SETUP_EMAIL_RECOVERY.md).
-- **Publishing:** upload your changes, then go to **Releases → Draft a new release**, use the next tag (like `v2.0.14`), and click **Publish**. GitHub tests and builds both apps, and everyone gets the update automatically.
+- **Publishing:** upload your changes, then go to **Releases → Draft a new release**, use the next tag (like `v2.0.15`), and click **Publish**. GitHub tests and builds both apps, and everyone gets the update automatically.
 
 ## Credits
 

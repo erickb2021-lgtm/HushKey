@@ -915,8 +915,22 @@ def background_source(key):
     return _bg_source[key]
 
 
+_pic_cache = {}
+
+
 def background_picture(key, w, h, dim, dark):
-    """The picture filling w x h, faded toward the theme color (dark or light)."""
+    """The picture filling w x h, faded toward the theme color (dark or light). The last few
+    are kept, so switching theme or coming back to a screen doesn't redo the work."""
+    k = (key, w, h, dim, dark)
+    if k not in _pic_cache:
+        pic = _make_background_picture(key, w, h, dim, dark)
+        if len(_pic_cache) >= 6:
+            _pic_cache.pop(next(iter(_pic_cache)))
+        _pic_cache[k] = pic
+    return _pic_cache[k]
+
+
+def _make_background_picture(key, w, h, dim, dark):
     from PIL import Image, ImageOps
     src = background_source(key)
     if src is None or w < 2 or h < 2:
@@ -940,6 +954,110 @@ def background_thumb(key, w=120, h=68):
             img = ImageOps.fit(src, (w * 2, h * 2), Image.LANCZOS)
             _bg_thumbs[k] = ctk.CTkImage(light_image=img, dark_image=img, size=(w, h))
     return _bg_thumbs[k]
+
+
+_thumb_pil = {}
+
+
+def _bg_thumb_pil(key, w, h):
+    k = (key, w, h)
+    if k not in _thumb_pil:
+        from PIL import Image, ImageOps
+        src = background_source(key) if key != "none" else None
+        _thumb_pil[k] = ImageOps.fit(src, (w, h), Image.LANCZOS) if src is not None else None
+    return _thumb_pil[k]
+
+
+def _ui_font(size, bold=False):
+    """The chosen font as a PIL font (for pictures that contain words)."""
+    from PIL import ImageFont
+    stem = next((st for _k, fam, st in FONT_CHOICES if fam == FAMILY), "Poppins")
+    try:
+        return ImageFont.truetype(_font_file(f"{stem}-{'Bold' if bold else 'Regular'}.ttf"), size)
+    except Exception:
+        return ImageFont.load_default()
+
+
+class PickGrid(ctk.CTkLabel):
+    """A grid of choices drawn as ONE picture (for the 21 colors and 16 backgrounds).
+    Showing one picture is far quicker than making dozens of buttons, so Settings opens fast.
+    draw(dark, cur) returns the picture; clicking a cell calls on_pick(value)."""
+
+    def __init__(self, parent, values, cols, cell, draw, get, on_pick):
+        super().__init__(parent, text="", cursor="hand2")
+        self.values, self.cols, self.cell = values, cols, cell
+        self._hk_maker, self._hk_getter, self._hk_pick = draw, get, on_pick
+        self.bind("<Button-1>", self._hk_click)
+        self.paint()
+
+    def paint(self):
+        """Redraw only when the choice, accent color, theme or font changed, and only for
+        the theme that's showing (switching theme repaints it)."""
+        dark = ctk.get_appearance_mode().lower() == "dark"
+        state = (self._hk_getter(), ACCENT, dark, FAMILY, STYLE)
+        if getattr(self, "_hk_state", None) == state:
+            return
+        self._hk_state = state
+        pic = self._hk_maker(dark, state[0])
+        self.configure(image=ctk.CTkImage(light_image=pic, dark_image=pic, size=(pic.width // 2, pic.height // 2)))
+
+    def _hk_click(self, e):
+        sc = self._get_widget_scaling()
+        col, row = int(e.x / sc // self.cell[0]), int(e.y / sc // self.cell[1])
+        i = row * self.cols + col
+        if 0 <= col < self.cols and 0 <= i < len(self.values):
+            self._hk_pick(self.values[i])
+
+
+def accent_grid_picture(dark, cur):
+    from PIL import Image, ImageDraw
+    k, cols, cw = 2, 7, 48
+    rows = (len(ACCENTS) + cols - 1) // cols
+    img = Image.new("RGBA", (cols * cw * k, rows * cw * k), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    for i, (key, _n, dk, lt) in enumerate(ACCENTS):
+        x, y = (i % cols) * cw * k + 4 * k, (i // cols) * cw * k + 4 * k
+        r = _radius(12) * k
+        on = key == cur
+        if on:
+            d.rounded_rectangle([x - 2 * k, y - 2 * k, x + 42 * k, y + 42 * k], radius=r + 2 * k,
+                                fill=_hex(TEXT[1] if dark else TEXT[0]))
+        d.rounded_rectangle([x + (2 if on else 0) * k, y + (2 if on else 0) * k, x + (38 if on else 40) * k,
+                             y + (38 if on else 40) * k], radius=r, fill=_hex(dk if dark else lt))
+        if on:
+            ink = (11, 17, 22) if dark else (255, 255, 255)
+            d.line([(x + 13 * k, y + 21 * k), (x + 18 * k, y + 26 * k), (x + 28 * k, y + 14 * k)], fill=ink,
+                   width=3 * k, joint="curve")
+    return img
+
+
+def background_grid_picture(dark, cur):
+    from PIL import Image, ImageDraw
+    k, cols, cw, ch = 2, 4, 140, 104
+    rows = (len(BACKGROUNDS) + cols - 1) // cols
+    img = Image.new("RGBA", (cols * cw * k, rows * ch * k), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    pick = (lambda pair: _hex(pair[1] if dark else pair[0]))
+    f = _ui_font(12 * k)
+    fb = _ui_font(12 * k, bold=True)
+    for i, (key, label) in enumerate(BACKGROUNDS):
+        x, y = (i % cols) * cw * k, (i // cols) * ch * k
+        on = key == cur
+        d.rounded_rectangle([x, y + 4 * k, x + 132 * k, y + 100 * k], radius=_radius(12) * k,
+                            fill=pick(ACCENT_SOFT if on else SURFACE), outline=pick(ACCENT if on else BORDER),
+                            width=2 * k)
+        th = _bg_thumb_pil(key, 120 * k, 68 * k)
+        if th is None:
+            d.rounded_rectangle([x + 6 * k, y + 10 * k, x + 126 * k, y + 78 * k], radius=_radius(6) * k,
+                                fill=pick(BG), outline=pick(BORDER), width=k)
+        else:
+            mask = Image.new("L", th.size, 0)
+            ImageDraw.Draw(mask).rounded_rectangle([0, 0, th.width - 1, th.height - 1], radius=_radius(6) * k,
+                                                   fill=255)
+            img.paste(th, (x + 6 * k, y + 10 * k), mask)
+        d.text((x + 66 * k, y + 89 * k), label, font=fb if on else f, fill=pick(ACCENT if on else TEXT),
+               anchor="mm")
+    return img
 
 
 def appearance_preview(settings, dark):
@@ -1592,6 +1710,7 @@ class GlassMain(_Glass, ctk.CTkFrame):
             for i in c.find_all():
                 if i not in before:
                     c.addtag_withtag(tag, i)
+            self._panel_tag, self._panel_box = tag, (right, m, W - m, H - m, is_open)
             if is_open and not getattr(self, "_was_open", False) and a.animate:
                 shift = W - right   # slide in from the right edge
                 c.move(tag, shift, 0)
@@ -1603,7 +1722,28 @@ class GlassMain(_Glass, ctk.CTkFrame):
                     moved[0] += step
                 a.glide(8, slide)
         self._was_open = is_open
+        self._layout_key = (W, H, a.sel_id is not None, is_open)
         c.tag_lower("pic")
+        c.tag_raise("win")
+
+    def redraw_panel(self):
+        """Clicking another login only changes the details panel: redraw just that part."""
+        a, c = self.app, self.canvas
+        W, H = c.winfo_width(), c.winfo_height()
+        is_open = a.sel_id is not None and a.settings.get("panel_open", True)
+        if getattr(self, "_layout_key", None) != (W, H, a.sel_id is not None, is_open) \
+                or not getattr(self, "_panel_tag", None) or not is_open:
+            return self.redraw()
+        c.delete(self._panel_tag)
+        x0, y0, x1, y1, _ = self._panel_box
+        before = set(c.find_all())
+        self._panel(x0, y0, x1, y1)
+        tag = f"panel{self._n}"
+        self._n += 1
+        for i in c.find_all():
+            if i not in before:
+                c.addtag_withtag(tag, i)
+        self._panel_tag = tag
         c.tag_raise("win")
 
     def _card(self, x0, y0, x1, y1):
@@ -2159,10 +2299,11 @@ class HushKeyApp(ctk.CTk):
         if not self.animate or getattr(self, "_no_fade", False):
             return
         try:
-            self.attributes("-alpha", 0.82)
+            self.attributes("-alpha", 0.9)
         except Exception:
             return
-        self.after(16, lambda: self.glide(7, lambda t: self.attributes("-alpha", 0.82 + 0.18 * t)))
+        self.after(20, lambda: self.glide(5, lambda t: self.attributes("-alpha", 1.0 if t >= 1 else 0.9 + 0.1 * t),
+                                          ms=16))
 
     def _clear(self):
         self._fade_in()
@@ -2172,6 +2313,8 @@ class HushKeyApp(ctk.CTk):
         self._secret_widgets = {}
         self._on_security = False
         self._settings_body = None
+        self._painters = None
+        self._preview_lbl = None
         self.listbox = None
         self.art = None
         self.glass = None
@@ -3628,7 +3771,9 @@ class HushKeyApp(ctk.CTk):
 
     def _draw_panel(self):
         if self.glass is not None:
-            return self.glass.redraw()
+            return self.glass.redraw_panel()
+        if getattr(self, "panel", None) is None or not self.panel.winfo_exists():
+            return   # not on the vault screen
         for w in self.panel.winfo_children():
             w.destroy()
         self.panel.grid_forget()
@@ -3646,16 +3791,17 @@ class HushKeyApp(ctk.CTk):
         was_open = getattr(self, "_panel_was_open", False)
         self.panel.grid(row=0, column=4, sticky="ns")
         self._panel_was_open = True
-        if not was_open:
-            panel = self.panel
-            self.glide(8, lambda p: panel.winfo_exists() and panel.configure(width=int(60 + 312 * p)))
         try:
             e = self.vault.get(self.sel_id)
         except VaultError:
             self.sel_id = None
             return self._draw_panel()
-        p = ctk.CTkFrame(self.panel, fg_color="transparent")
-        p.pack(fill="both", expand=True, padx=18, pady=(12, 18))
+        clip = ctk.CTkFrame(self.panel, fg_color="transparent")
+        clip.pack(fill="both", expand=True, padx=18, pady=(12, 18))
+        p = ctk.CTkFrame(clip, fg_color="transparent")
+        p.place(x=0, y=0, relwidth=1, relheight=1)
+        if not was_open:   # slide the details in from the right
+            self.glide(8, lambda t: p.winfo_exists() and p.place(x=int(120 * (1 - t))))
 
         ctk.CTkButton(p, text="›  Hide", command=self.close_panel, width=70, height=28, corner_radius=8,
                       fg_color="transparent", hover_color=RAISED, text_color=SUBTLE, font=font(12),
@@ -3995,11 +4141,21 @@ class HushKeyApp(ctk.CTk):
         # picking something on the same tab keeps your place instead of jumping back to the top
         keep = None
         old = getattr(self, "_settings_body", None)
-        if getattr(self, "_settings_tab", None) == tab and old is not None and old.winfo_exists():
-            keep = old._parent_canvas.yview()[0]
-        self._no_fade = keep is not None
-        page = self._page_frame()
-        self._no_fade = False
+        old_page = None
+        if old is not None and old.winfo_exists() and getattr(self, "_main", None) is not None \
+                and self._main.winfo_exists():
+            # already in Settings: build the new page on top of the old one, then remove the old one,
+            # so the screen never goes blank
+            old_page = self._main
+            if getattr(self, "_settings_tab", None) == tab:
+                keep = old._parent_canvas.yview()[0]
+            self._touch()
+            self.status, self._menu, self._toast_frame = None, None, None
+            page = ctk.CTkFrame(self.body, fg_color=BG, corner_radius=0)
+            self._main = page
+        else:
+            page = self._page_frame()
+        self._painters = []
         page.grid_rowconfigure(1, weight=1)
         page.grid_columnconfigure(2, weight=1)
         nav = ctk.CTkFrame(page, fg_color=SIDE, corner_radius=0, width=236)
@@ -4013,10 +4169,19 @@ class HushKeyApp(ctk.CTk):
             fill="x", padx=20, pady=(0, 14))
         for key, label in self.SETTINGS_TABS:
             on = key == tab
-            ctk.CTkButton(nav, text=label, command=lambda k=key: self.show_settings(k), height=40,
-                          corner_radius=10, anchor="w", fg_color=ACCENT_SOFT if on else "transparent",
-                          hover_color=ACCENT_SOFT_HOVER if on else RAISED, text_color=ACCENT if on else TEXT,
-                          font=font(14, "bold" if on else "normal")).pack(fill="x", padx=10, pady=1)
+            b = ctk.CTkButton(nav, text=label, command=lambda k=key: self.show_settings(k), height=40,
+                              corner_radius=10, anchor="w", font=font(14, "bold" if on else "normal"),
+                              fg_color=ACCENT_SOFT if on else "transparent",
+                              hover_color=ACCENT_SOFT_HOVER if on else RAISED, text_color=ACCENT if on else TEXT)
+            b.pack(fill="x", padx=10, pady=1)
+            if on:
+                seen = {"accent": ACCENT}
+
+                def paint_tab(b=b, seen=seen):
+                    if ACCENT != seen["accent"]:
+                        b.configure(fg_color=ACCENT_SOFT, hover_color=ACCENT_SOFT_HOVER, text_color=ACCENT)
+                        seen["accent"] = ACCENT
+                self._painters.append(paint_tab)
         ctk.CTkButton(nav, text="Sign out", command=self.sign_out, height=40, corner_radius=10, anchor="w",
                       fg_color=DANGER_SOFT, hover_color=DANGER_BORDER, text_color=SIGNOUT,
                       font=font(14, "bold")).pack(side="bottom", fill="x", padx=10, pady=16)
@@ -4025,10 +4190,13 @@ class HushKeyApp(ctk.CTk):
             top = ctk.CTkFrame(page, fg_color="transparent")
             top.grid(row=0, column=2, sticky="ew", padx=34, pady=(18, 0))
             ctk.CTkLabel(top, text="PREVIEW", font=font(11, "bold"), text_color=SUBTLE, anchor="w").pack(fill="x")
-            pic = appearance_preview(self.settings, self.is_dark)
-            ctk.CTkLabel(top, text="", image=ctk.CTkImage(light_image=pic, dark_image=pic,
-                                                          size=(pic.width // 2, pic.height // 2))).pack(
-                anchor="w", pady=(4, 0))
+            pic = getattr(self, "_last_preview", None)
+            if pic is None:
+                from PIL import Image
+                pic = Image.new("RGBA", (1120, 472), (0, 0, 0, 0))
+            self._preview_lbl = ctk.CTkLabel(top, text="", width=560, height=236, image=ctk.CTkImage(
+                light_image=pic, dark_image=pic, size=(560, 236)))
+            self._preview_lbl.pack(anchor="w", pady=(4, 0))
             ctk.CTkFrame(page, fg_color=BORDER, corner_radius=0, height=1).grid(row=0, column=2, sticky="sew",
                                                                                padx=34)
         body = ctk.CTkScrollableFrame(page, fg_color="transparent", corner_radius=0)
@@ -4041,9 +4209,15 @@ class HushKeyApp(ctk.CTk):
         getattr(self, "_settings_" + tab)(inner)
         self.status = ctk.CTkLabel(inner, text="", font=font(12), text_color=MUTED, anchor="w")
         self.status.pack(fill="x", pady=(18, 0))
-        if keep:
-            body.update_idletasks()
-            body._parent_canvas.yview_moveto(keep)
+        if old_page is not None:
+            page.place(x=0, y=0, relwidth=1, relheight=1)
+            page.lift()
+            page.update_idletasks()
+            if keep:
+                body._parent_canvas.yview_moveto(keep)
+            old_page.destroy()
+        if tab == "appearance":
+            self._update_preview()
 
     def _section(self, parent, title, sub=""):
         ctk.CTkLabel(parent, text=title, font=font(15, "bold"), text_color=TEXT, anchor="w").pack(
@@ -4087,6 +4261,14 @@ class HushKeyApp(ctk.CTk):
         toggle.configure(command=flip)
         toggle.pack(side="right", padx=12)
         card.toggle = toggle
+        if getattr(self, "_painters", None) is not None:
+            seen = {"accent": ACCENT}
+
+            def repaint():
+                if ACCENT != seen["accent"] and toggle.winfo_exists():
+                    toggle.configure(image=toggle_image(state["on"]))
+                    seen["accent"] = ACCENT
+            self._painters.append(repaint)
         return card
 
     def _settings_general(self, c):
@@ -4124,38 +4306,28 @@ class HushKeyApp(ctk.CTk):
                                              f"{CLIPBOARD_CLEAR_SECONDS} seconds.")
 
     def _settings_appearance(self, c):
-        mode = self.settings.get("theme", "dark")
+        """Every choice here updates in place (no rebuilding the page), and the preview at the
+        top redraws in the background, so picking things is instant and nothing flashes."""
         self._section(c, "Theme")
 
         def theme(v):
             self.settings["theme"] = v
             save_settings(self.settings, self.data_dir)
             ctk.set_appearance_mode({"light": "light", "dark": "dark"}.get(v, "system"))
-            self.show_settings("appearance")
-        self._choice_row(c, [("dark", "Dark"), ("light", "Light"), ("system", "Match my computer")], mode, theme)
+            self.refresh_appearance()
+        self._live_choice(c, [("dark", "Dark"), ("light", "Light"), ("system", "Match my computer")],
+                          lambda: self.settings.get("theme", "dark"), theme)
         self._settings_style(c)
-        current = self.settings.get("accent", "green")
-        name = next((a[1] for a in ACCENTS if a[0] == current), "Green")
-        self._section(c, f"Accent color · {name}", "Buttons and highlights use your color. "
-                                                    "The HushKey logo stays green.")
-        grid = ctk.CTkFrame(c, fg_color="transparent")
-        grid.pack(anchor="w", pady=(10, 0))
-        for i, (key, label, dark, light) in enumerate(ACCENTS):
-            on = key == current
-            ctk.CTkButton(grid, text="✓" if on else "", width=40, height=40, corner_radius=12,
-                          fg_color=(light, dark), hover_color=(light, dark), border_width=3,
-                          border_color=TEXT if on else BG, text_color=("#FFFFFF", "#0B1116"),
-                          font=font(15, "bold"), command=lambda k=key: self.set_accent(k)).grid(
-                row=i // 7, column=i % 7, padx=4, pady=4)
+        self._settings_accent(c)
         self._settings_background(c)
         self._section(c, "Density", "Comfortable gives each login more room. Compact fits more on screen.")
-        dens = "compact" if self.compact else "comfortable"
 
         def density(v):
             self.settings["density"] = v
             save_settings(self.settings, self.data_dir)
-            self.show_settings("appearance")
-        self._choice_row(c, [("comfortable", "Comfortable"), ("compact", "Compact")], dens, density)
+            self.refresh_appearance()
+        self._live_choice(c, [("comfortable", "Comfortable"), ("compact", "Compact")],
+                          lambda: "compact" if self.compact else "comfortable", density)
         self._section(c, "Password strength colors", "These never change with your accent color, "
                                                     "so a weak password always looks like a warning.")
         legend = ctk.CTkFrame(c, fg_color="transparent")
@@ -4166,14 +4338,79 @@ class HushKeyApp(ctk.CTk):
             ctk.CTkLabel(legend, text=STRENGTH_LABELS[i], font=font(12), text_color=MUTED).pack(
                 side="left", padx=(0, 14))
 
+    def _live_choice(self, parent, options, get, on_pick, wrap=8):
+        """A row of choices that restyles itself when you pick (no page rebuild)."""
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill="x", pady=(10, 0))
+        btns = {}
+
+        def colors(on):
+            return dict(fg_color=ACCENT if on else SURFACE, hover_color=ACCENT_HOVER if on else RAISED,
+                        border_color=ACCENT if on else BORDER, text_color=ACCENT_INK if on else TEXT)
+        cur = get()
+        for i, (value, label) in enumerate(options):
+            b = ctk.CTkButton(row, text=label, command=lambda v=value: on_pick(v), height=36, width=76,
+                              corner_radius=10, border_width=1, font=font(13), **colors(value == cur))
+            b.grid(row=i // wrap, column=i % wrap, padx=(0, 6), pady=3, sticky="w")
+            btns[value] = b
+        state = {"cur": cur, "accent": ACCENT}
+
+        def paint():
+            now = get()
+            if now == state["cur"] and ACCENT == state["accent"]:
+                return   # nothing changed for this row
+            for v, b in btns.items():
+                if ACCENT != state["accent"] or v in (now, state["cur"]):
+                    b.configure(**colors(v == now))
+            state.update(cur=now, accent=ACCENT)
+        self._painters.append(paint)
+        return row
+
+    def refresh_appearance(self, rebuild=False):
+        """After a change in Appearance: restyle the choices and redraw the preview."""
+        if rebuild:
+            return self.show_settings("appearance")
+        for paint in list(getattr(self, "_painters", [])):
+            try:
+                paint()
+            except Exception:
+                traceback.print_exc()
+        self._update_preview()
+
+    def _update_preview(self):
+        lbl = getattr(self, "_preview_lbl", None)
+        if lbl is None or not lbl.winfo_exists():
+            return
+        token = object()
+        self._preview_token = token
+        snapshot, dark = dict(self.settings), self.is_dark
+
+        def done(pic):
+            self._last_preview = pic
+            if self._preview_token is token and lbl.winfo_exists():
+                lbl.configure(image=ctk.CTkImage(light_image=pic, dark_image=pic,
+                                                 size=(pic.width // 2, pic.height // 2)))
+        self.run_quiet(lambda: appearance_preview(snapshot, dark), done)
+
+    def _refont(self):
+        """Switch every word on screen to the chosen font, without rebuilding anything."""
+        stack = [self]
+        while stack:
+            w = stack.pop()
+            stack.extend(w.winfo_children())
+            f = getattr(w, "_font", None)
+            if isinstance(f, ctk.CTkFont) and not getattr(w, "_hk_keep_font", False) \
+                    and f.cget("family") != MONO and FAMILY:
+                f.configure(family=FAMILY)
+
     def _settings_style(self, c):
-        global STYLE
-        style = self.settings.get("style", "basic")
         self._section(c, "Style", "Basic has soft rounded corners. Pixel gives HushKey square, retro corners "
                                   "and the pixel font.")
 
         def set_style(v):
             global STYLE
+            if v == self.settings.get("style", "basic"):
+                return
             self.settings["style"] = v
             if v == "pixel" and self.settings.get("font", "poppins") == "poppins":
                 self.settings["font"] = "pixel"
@@ -4182,65 +4419,97 @@ class HushKeyApp(ctk.CTk):
             save_settings(self.settings, self.data_dir)
             STYLE = v
             set_font(self.settings.get("font", "poppins"))
-            self.show_settings("appearance")
-        self._choice_row(c, [("basic", "Basic"), ("pixel", "Pixel")], style, set_style)
-        self._switch_row(c, "Smooth animations", "Screens fade in, and the details panel, menus and messages "
-                                                 "slide in quickly. Turn off for instant changes.",
-                         "animations", default=True)
-        cur = self.settings.get("font", "poppins")
+            _toggle_cache.clear()
+            self.refresh_appearance(rebuild=True)   # corners are set when a box is made, so redraw the page
+        self._live_choice(c, [("basic", "Basic"), ("pixel", "Pixel")],
+                          lambda: self.settings.get("style", "basic"), set_style)
+        self._switch_row(c, "Smooth animations", "The details panel, menus and messages slide in quickly. "
+                                                 "Turn off for instant changes.", "animations", default=True)
         self._section(c, "Font")
+        row = ctk.CTkFrame(c, fg_color="transparent")
+        row.pack(fill="x", pady=(10, 0))
+        btns = {}
 
         def set_fnt(v):
             self.settings["font"] = v
             save_settings(self.settings, self.data_dir)
             set_font(v)
-            self.show_settings("appearance")
-        row = ctk.CTkFrame(c, fg_color="transparent")
-        row.pack(fill="x", pady=(10, 0))
+            self._refont()
+            self.refresh_appearance()
+        def colors(on):
+            return dict(fg_color=ACCENT if on else SURFACE, hover_color=ACCENT_HOVER if on else RAISED,
+                        border_color=ACCENT if on else BORDER, text_color=ACCENT_INK if on else TEXT)
+        start = self.settings.get("font", "poppins")
         for i, (key, family, _stem) in enumerate(FONT_CHOICES):
-            on = key == cur
             fam = family if family in _AVAILABLE else FAMILY
-            ctk.CTkButton(row, text=FONT_LABELS[key], command=lambda v=key: set_fnt(v), height=40, width=110,
-                          corner_radius=10, fg_color=ACCENT if on else SURFACE,
-                          hover_color=ACCENT_HOVER if on else RAISED, border_width=1,
-                          border_color=ACCENT if on else BORDER, text_color=ACCENT_INK if on else TEXT,
-                          font=ctk.CTkFont(family=fam, size=14, weight="bold" if on else "normal")
-                          if fam else font(14)).grid(row=0, column=i, padx=(0, 6), pady=3, sticky="w")
+            b = ctk.CTkButton(row, text=FONT_LABELS[key], command=lambda v=key: set_fnt(v), height=40, width=110,
+                              corner_radius=10, border_width=1, **colors(key == start),
+                              font=ctk.CTkFont(family=fam, size=14) if fam else font(14))
+            b._hk_keep_font = True   # each button shows its own font
+            b.grid(row=0, column=i, padx=(0, 6), pady=3, sticky="w")
+            btns[key] = b
+        state = {"cur": start, "accent": ACCENT}
 
-    def _settings_background(self, c):
-        cur = self.settings.get("background", "none")
-        name = dict(BACKGROUNDS).get(cur, "Plain")
-        self._section(c, f"Background · {name}", "A picture behind your vault. It fades darker in dark mode and "
-                                                 "lighter in light mode, so everything stays easy to read.")
-        grid = ctk.CTkFrame(c, fg_color="transparent")
+        def paint():
+            now = self.settings.get("font", "poppins")
+            if now == state["cur"] and ACCENT == state["accent"]:
+                return
+            for k, b in btns.items():
+                if ACCENT != state["accent"] or k in (now, state["cur"]):
+                    b.configure(**colors(k == now))
+            state.update(cur=now, accent=ACCENT)
+        self._painters.append(paint)
+
+    def _settings_accent(self, c):
+        title = ctk.CTkLabel(c, text="", font=font(15, "bold"), text_color=TEXT, anchor="w")
+        title.pack(fill="x", pady=(22, 0))
+        ctk.CTkLabel(c, text="Buttons and highlights use your color. The HushKey logo stays green.", font=font(12),
+                     text_color=MUTED, anchor="w").pack(fill="x", pady=(2, 0))
+        get = (lambda: self.settings.get("accent", "green"))
+        grid = PickGrid(c, [a[0] for a in ACCENTS], 7, (48, 48), accent_grid_picture, get, self.set_accent)
         grid.pack(anchor="w", pady=(10, 0))
 
+        def paint():
+            title.configure(text="Accent color · " + next((a[1] for a in ACCENTS if a[0] == get()), "Green"))
+            grid.paint()
+        title.configure(text="Accent color · " + next((a[1] for a in ACCENTS if a[0] == get()), "Green"))
+        self._painters.append(paint)
+
+    def _settings_background(self, c):
+        title = ctk.CTkLabel(c, text="", font=font(15, "bold"), text_color=TEXT, anchor="w")
+        title.pack(fill="x", pady=(22, 0))
+        ctk.CTkLabel(c, text="A picture behind your vault. It fades darker in dark mode and lighter in light "
+                             "mode, so everything stays easy to read.", font=font(12), text_color=MUTED,
+                     anchor="w", justify="left", wraplength=560).pack(fill="x", pady=(2, 0))
         def pick(key):
+            was = self.settings.get("background", "none")
             self.settings["background"] = key
             save_settings(self.settings, self.data_dir)
-            self.show_settings("appearance")
-        for i, (key, label) in enumerate(BACKGROUNDS):
-            on = key == cur
-            ctk.CTkButton(grid, text=label, image=background_thumb(key), compound="top", width=132, height=96,
-                          corner_radius=12, fg_color=ACCENT_SOFT if on else SURFACE,
-                          hover_color=ACCENT_SOFT_HOVER if on else RAISED, border_width=2,
-                          border_color=ACCENT if on else BORDER, text_color=ACCENT if on else TEXT,
-                          font=font(12, "bold" if on else "normal"),
-                          command=lambda k=key: pick(k)).grid(row=i // 4, column=i % 4, padx=(0, 8), pady=4)
-        if cur == "none":
+            # the picture options below only show when a picture is chosen
+            self.refresh_appearance(rebuild=(was == "none") != (key == "none"))
+        get = (lambda: self.settings.get("background", "none"))
+        grid = PickGrid(c, [b[0] for b in BACKGROUNDS], 4, (140, 104), background_grid_picture, get, pick)
+        grid.pack(anchor="w", pady=(10, 0))
+
+        def paint():
+            title.configure(text="Background · " + dict(BACKGROUNDS).get(get(), "Plain"))
+            grid.paint()
+        title.configure(text="Background · " + dict(BACKGROUNDS).get(get(), "Plain"))
+        self._painters.append(paint)
+        if self.settings.get("background", "none") == "none":
             return
         self._section(c, "Dim the picture", "More dim makes your logins easier to read.")
-        dim = self.settings.get("bg_dim", "medium")
 
         def set_dim(v):
             self.settings["bg_dim"] = v
             save_settings(self.settings, self.data_dir)
-            self.show_settings("appearance")
-        self._choice_row(c, [("low", "Low"), ("medium", "Medium"), ("high", "High")], dim, set_dim)
+            self.refresh_appearance()
+        self._live_choice(c, [("low", "Low"), ("medium", "Medium"), ("high", "High")],
+                          lambda: self.settings.get("bg_dim", "medium"), set_dim)
         self._switch_row(c, "See-through boxes", "Show the picture through your logins, the sidebar and the "
                                                  "details panel. Each box keeps an outline and its text a soft "
                                                  "shadow, so it's always readable. Off: solid boxes over the picture.",
-                         "see_through", default=True)
+                         "see_through", default=True, on_change=self._update_preview)
         self._switch_row(c, "Show it on the sign-in screen", "Off: the sign-in screen stays plain. "
                                                              "The sign-in box itself is always solid.",
                          "bg_signin", default=False)
@@ -4249,6 +4518,9 @@ class HushKeyApp(ctk.CTk):
         self.settings["accent"] = key
         save_settings(self.settings, self.data_dir)
         apply_accent(key)
+        if getattr(self, "_settings_tab", None) == "appearance" and getattr(self, "_painters", None) is not None \
+                and getattr(self, "_settings_body", None) is not None and self._settings_body.winfo_exists():
+            return self.refresh_appearance()
         self.show_settings("appearance")
 
     def _settings_security(self, c):
