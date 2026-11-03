@@ -129,6 +129,11 @@ class Cloud:
                              {"refresh_token": refresh_token}, sync=True)
         return self._session(data)
 
+    def sign_out_others(self, session: Session) -> None:
+        """Sign every OTHER computer out of this account (keeps this one signed in).
+        They'll need a new email code before they can sync again."""
+        self._request("POST", "/auth/v1/logout?scope=others", None, token=session.access_token, sync=True)
+
     # ---- recovery secrets --------------------------------------------------
 
     def store_secret(self, session: Session, vault_id: str, secret: bytes) -> None:

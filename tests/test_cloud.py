@@ -135,6 +135,19 @@ class CloudTests(unittest.TestCase):
         self.assertIn("Too many", str(ctx.exception))
 
 
+class SignOutOthersTest(unittest.TestCase):
+    def test_signs_out_other_computers_with_this_sign_in(self):
+        seen = []
+
+        def server(req):
+            seen.append(req)
+            return io.BytesIO(b"")
+        c = Cloud("https://demo.supabase.co", "k", opener=server)
+        c.sign_out_others(Session("tok-abc", "refresh", 9e9))
+        self.assertTrue(seen[0].full_url.endswith("/auth/v1/logout?scope=others"))
+        self.assertEqual(seen[0].get_header("Authorization"), "Bearer tok-abc")
+
+
 class EndToEndRecoveryTest(unittest.TestCase):
     """Create a vault with email recovery, forget the password, reset it."""
 

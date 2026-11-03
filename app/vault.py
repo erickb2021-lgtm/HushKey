@@ -672,6 +672,82 @@ class Vault:
         m = self._meta(self._find(entry_id))
         return {"snooze": float(m.get("snooze") or 0), "mute": bool(m.get("mute"))}
 
+    # ---- your computers (Settings > Sync & devices) -------------------------------
+    # Each computer that opens this vault adds a small encrypted note: its name, system
+    # and when it was last used. Notes sync, so every computer sees the list. Removing
+    # one marks it removed; that computer signs itself out the next time it syncs.
+
+    TOUCH_EVERY = 3600   # update "last used" at most once an hour, so it doesn't cause extra syncs
+
+    @staticmethod
+    def computer_key() -> str:
+        return hashlib.sha256(("hushkey-computer|" + device_id()).encode("utf-8")).hexdigest()[:16]
+
+    def computers(self) -> list:
+        """[{key, name, system, first, last, removed, this}], this computer first."""
+        self._require_unlocked()
+        out = []
+        for key, rec in (self._data.get("computers") or {}).items():
+            try:
+                info = json.loads(self._dec(rec["data"]))
+            except (ValueError, KeyError, TypeError):
+                continue
+            info["key"] = key
+            info["this"] = key == self.computer_key()
+            info["removed"] = bool(rec.get("removed")) and rec["removed"] > (rec.get("signin") or "")
+            out.append(info)
+        out.sort(key=lambda c: (not c["this"], -(c.get("last") or 0)))
+        return out
+
+    def touch_computer(self, signed_in: bool = False) -> bool:
+        """Note that this computer is using the vault. signed_in=True after a full sign-in
+        (master password, plus the email code on a new computer) also brings back a
+        computer that was removed."""
+        self._require_unlocked()
+        key = self.computer_key()
+        rec = (self._data.get("computers") or {}).get(key)
+        cur = next((c for c in self.computers() if c["key"] == key), None)
+        now = time.time()
+        if cur and cur["removed"] and not signed_in:
+            return False
+        if cur and not signed_in and now - (cur.get("last") or 0) < self.TOUCH_EVERY:
+            return False
+        system = {"win32": "Windows", "darwin": "Mac"}.get(sys.platform, platform.system() or "Computer")
+        name = (platform.node() or "This computer").split(".")[0][:40]
+        info = {"name": name, "system": system, "first": (cur or {}).get("first") or now, "last": now}
+        self._data.setdefault("computers", {})[key] = {
+            "data": self._enc(json.dumps(info, sort_keys=True)), "updated": _now(),
+            "signin": _now() if (signed_in or rec is None) else rec.get("signin", ""),
+            "removed": (rec or {}).get("removed")}
+        self._save()
+        return True
+
+    def remove_computer(self, key: str) -> None:
+        self._require_unlocked()
+        if key == self.computer_key():
+            raise VaultError("To remove this computer, use Sign out instead.")
+        rec = (self._data.get("computers") or {}).get(key)
+        if rec is None:
+            raise VaultError("That computer isn't in your list anymore.")
+        rec = dict(rec, removed=_now(), updated=_now())
+        self._data["computers"][key] = rec
+        self._save()
+
+    def this_computer_removed(self) -> bool:
+        if not self.is_unlocked:
+            return False
+        cur = next((c for c in self.computers() if c["this"]), None)
+        return bool(cur and cur["removed"])
+
+    def delete_local_copy(self) -> None:
+        """Remove this computer's copy of the vault (after it was removed from the account)."""
+        for path in (self.path, self.backup_path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        self.lock()
+
     def folders(self) -> list:
         """[{id, name, color}] in the order they were made. Names are encrypted."""
         self._require_unlocked()
@@ -886,6 +962,19 @@ def merge_vaults(local: dict, cloud: dict) -> dict:
         for k in ("folders", "folders_changed"):
             if k in cloud:
                 merged[k] = cloud[k]
+    computers = dict(local.get("computers") or {})
+    for key, rec in (cloud.get("computers") or {}).items():
+        old = computers.get(key)
+        if old is None:
+            computers[key] = rec
+            continue
+        win = dict(rec if (rec.get("updated") or "") > (old.get("updated") or "") else old)
+        # a removal or a full sign-in is never lost, even if the other copy was edited later
+        win["removed"] = max(rec.get("removed") or "", old.get("removed") or "") or None
+        win["signin"] = max(rec.get("signin") or "", old.get("signin") or "")
+        computers[key] = win
+    if computers:
+        merged["computers"] = computers
     deleted = dict(local.get("deleted") or {})
     for eid, when in (cloud.get("deleted") or {}).items():
         if when > deleted.get(eid, ""):

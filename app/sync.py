@@ -97,6 +97,10 @@ class Syncer:
             self.cloud.put_vault(self._live_session(), plan["vault_id"], plan["data"], plan["rev"])
         self.last_synced = time.time()
 
+    def sign_out_others(self) -> None:
+        """Background: end sync sign-ins on all other computers."""
+        self.cloud.sign_out_others(self._live_session())
+
     # ---- new computer --------------------------------------------------------
 
     def download_for_new_computer(self, session: Session):

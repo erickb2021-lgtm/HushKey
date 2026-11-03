@@ -175,3 +175,46 @@ class SyncOrganizeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ComputerTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from vault import Vault, merge_vaults, new_recovery_secret  # noqa: F401
+        self.tmp = tempfile.mkdtemp()
+        self.v = Vault("john.doe@example.com", self.tmp)
+        self.v.create("correct horse battery", new_recovery_secret())
+
+    def test_this_computer_is_listed(self):
+        self.assertTrue(self.v.touch_computer(signed_in=True))
+        cs = self.v.computers()
+        self.assertEqual(len(cs), 1)
+        self.assertTrue(cs[0]["this"])
+        self.assertFalse(self.v.touch_computer())          # not again within the hour
+
+    def test_remove_another_computer_and_sync(self):
+        import json
+        from vault import merge_vaults
+        self.v.touch_computer(signed_in=True)
+        mine = self.v._data["computers"][self.v.computer_key()]
+        self.v._data["computers"]["abc123"] = dict(mine, signin="2026-01-01T00:00:00+00:00")
+        self.v._save()
+        with self.assertRaises(Exception):
+            self.v.remove_computer(self.v.computer_key())   # can't remove yourself here
+        self.v.remove_computer("abc123")
+        self.assertTrue(next(c for c in self.v.computers() if c["key"] == "abc123")["removed"])
+        # the removed computer's own (stale) copy touches its record later: the removal still wins
+        stale = json.loads(json.dumps(self.v._data))
+        stale["computers"]["abc123"].update(removed=None, updated="2999-01-01T00:00:00+00:00")
+        merged = merge_vaults(stale, self.v._data)
+        self.assertTrue(merged["computers"]["abc123"]["removed"])
+
+    def test_removed_computer_notices(self):
+        self.v.touch_computer(signed_in=True)
+        rec = self.v._data["computers"][self.v.computer_key()]
+        rec["removed"] = "2999-01-01T00:00:00+00:00"
+        self.assertTrue(self.v.this_computer_removed())
+        self.assertFalse(self.v.touch_computer())           # stays removed...
+        rec["removed"] = "2000-01-01T00:00:00+00:00"           # ...a full sign-in after the removal brings it back
+        self.v.touch_computer(signed_in=True)
+        self.assertFalse(self.v.this_computer_removed())

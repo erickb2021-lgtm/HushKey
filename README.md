@@ -5,12 +5,12 @@
 <p align="center">A simple, private password manager for <b>Windows and Mac</b>.<br>Your logins are encrypted on your computer, and only you can open them.</p>
 
 <p align="center">
-  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.12 for Windows" src="https://img.shields.io/badge/Download_v2.0.12_for-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI0ZGRkZGRiIgZD0iTTAgMGgxMS4zNzd2MTEuMzcySDBabTEyLjYyMyAwSDI0djExLjM3MkgxMi42MjNaTTAgMTIuNjIzaDExLjM3N1YyNEgwWm0xMi42MjMgMEgyNFYyNEgxMi42MjNaIi8%2BPC9zdmc%2B&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.13 for Windows" src="https://img.shields.io/badge/Download_v2.0.13_for-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI0ZGRkZGRiIgZD0iTTAgMGgxMS4zNzd2MTEuMzcySDBabTEyLjYyMyAwSDI0djExLjM3MkgxMi42MjNaTTAgMTIuNjIzaDExLjM3N1YyNEgwWm0xMi42MjMgMEgyNFYyNEgxMi42MjNaIi8%2BPC9zdmc%2B&logoColor=white" height="44"></a>
   &nbsp;&nbsp;
-  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.12 for Mac" src="https://img.shields.io/badge/Download_v2.0.12_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.13 for Mac" src="https://img.shields.io/badge/Download_v2.0.13_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
 </p>
 
-<p align="center"><b>Latest version: v2.0.12</b> · <a href="../../releases">All releases</a></p>
+<p align="center"><b>Latest version: v2.0.13</b> · <a href="../../releases">All releases</a></p>
 
 ## Download
 
@@ -53,7 +53,7 @@ Older macOS: right-click HushKey → **Open** → **Open**.
 
 ## Features
 
-- **Sync** across your computers. Only encrypted data is uploaded.
+- **Sync** across your computers. Only encrypted data is uploaded. See your computers, and remove one you don't recognize.
 - **Favorites and folders**, including streaming-friendly hidden usernames.
 - **Security tips** that point out weak, reused or leaked passwords. They're optional, and you can turn them off.
 - **Import** from Google, Chrome, Bitwarden, LastPass, 1Password, Apple Passwords, Edge, Firefox or Dashlane. **Export** to an encrypted backup or a CSV file.
@@ -81,6 +81,19 @@ HushKey is built with users first. Your privacy matters more than any feature.
 - The Mac app needs Apple Silicon (M1 or newer).
 
 ## What's new
+
+### v2.0.13
+
+**New**
+- **Live preview** in Settings › Appearance: a small picture of your vault at the top shows your color, font, style, background, dim level and see-through boxes as you pick them. It stays in place while you scroll.
+- **Sharper backgrounds:** all 15 pictures are now full HD (1920×1080), so they look clearer in a big or fullscreen window.
+- **Smooth animations:** screens fade in, and the details panel, the profile menu and messages slide in quickly. You can turn them off in Settings › Appearance.
+- **Your computers:** Settings › Sync & devices lists every computer that has opened your vault, with its system and when it was last used. Don't recognize one? Click **Remove**. That computer signs out and deletes its copy the next time it connects, and your other computers are signed out of sync once to be safe.
+- **Faster, smoother scrolling** everywhere: each turn of the mouse wheel moves further, and the list glides instead of jumping.
+- The **Okay** password strength is now yellow (Weak is red, Strong is green).
+
+**Fixed**
+- Picking a color, font, background or other option in Settings no longer jumps you back to the top of the page.
 
 ### v2.0.12
 
@@ -196,7 +209,7 @@ python app/app.py
 ```
 
 - **Folders:** `app/` holds the code, `tests/` the tests (`python -m unittest discover -s tests`), and `packaging/` the build and installer scripts. `supabase/` sets up the database, and `docs/` has the [email recovery setup](docs/SETUP_EMAIL_RECOVERY.md).
-- **Publishing:** upload your changes, then go to **Releases → Draft a new release**, use the next tag (like `v2.0.13`), and click **Publish**. GitHub tests and builds both apps, and everyone gets the update automatically.
+- **Publishing:** upload your changes, then go to **Releases → Draft a new release**, use the next tag (like `v2.0.14`), and click **Publish**. GitHub tests and builds both apps, and everyone gets the update automatically.
 
 ## Credits
 

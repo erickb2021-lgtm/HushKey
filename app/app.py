@@ -82,9 +82,9 @@ TOAST_FG = ("#F7F4EC", "#0E1116")
 TOAST_LINK = ("#7BEBB9", "#137F4E")
 DOTS = "•" * 10
 
-# Password strength: 0-1 weak (red), 2 okay (orange), 3 strong, 4 very strong.
+# Password strength: 0-1 weak (red), 2 okay (yellow), 3 strong, 4 very strong.
 # These never follow the accent color, so a weak password always looks like a warning.
-STRENGTH_COLORS = [("#C62828", "#FF6B6B"), ("#C62828", "#FF6B6B"), ("#B45309", "#FFA64D"),
+STRENGTH_COLORS = [("#C62828", "#FF6B6B"), ("#C62828", "#FF6B6B"), ("#A16207", "#FACC15"),
                    ("#4D7C0F", "#9BE15D"), ("#137F4E", "#3DDC97")]
 STRENGTH_LABELS = ["Very weak", "Weak", "Okay", "Strong", "Very strong"]
 
@@ -318,6 +318,69 @@ def _install_style():
 
 
 _install_style()
+
+
+# ---- scrolling: faster, and it glides instead of jumping ----
+WHEEL_STEP = 110     # pixels per mouse-wheel notch
+
+
+def smooth_scroll(canvas, pixels):
+    """Scroll a canvas by some pixels, easing toward the spot over a few frames."""
+    try:
+        region = canvas.cget("scrollregion").split()
+        total = float(region[3]) - float(region[1]) if len(region) == 4 else 0
+        view = canvas.winfo_height()
+    except Exception:
+        return
+    if total <= view:
+        return
+    top = getattr(canvas, "_hk_target", None)
+    if top is None or not getattr(canvas, "_hk_moving", False):
+        top = canvas.yview()[0] * total
+    top = max(0.0, min(total - view, top + pixels))
+    canvas._hk_target = top
+    if getattr(canvas, "_hk_moving", False):
+        return
+
+    def step():
+        try:
+            now = canvas.yview()[0] * total
+        except Exception:
+            return
+        gap = canvas._hk_target - now
+        if abs(gap) < 1:
+            canvas.yview_moveto(canvas._hk_target / total)
+            canvas._hk_moving = False
+            return
+        canvas.yview_moveto((now + gap * 0.35) / total)
+        canvas.after(10, step)
+    canvas._hk_moving = True
+    step()
+
+
+def wheel_pixels(event):
+    """How far one wheel event should scroll, on Windows, Mac and Linux."""
+    if getattr(event, "num", None) == 4:
+        return -WHEEL_STEP
+    if getattr(event, "num", None) == 5:
+        return WHEEL_STEP
+    delta = getattr(event, "delta", 0) or 0
+    if IS_MAC:
+        return -delta * 12          # trackpads send many small steps
+    return -delta / 120 * WHEEL_STEP
+
+
+def _smooth_wheel(self, event):
+    check = getattr(self, "_check_if_valid_scroll", None)
+    if (check is not None and not check(event.widget)) or getattr(self, "_shift_pressed", False):
+        return
+    if self._parent_canvas.yview() != (0.0, 1.0):
+        px = wheel_pixels(event)
+        if px:
+            smooth_scroll(self._parent_canvas, px)
+
+
+ctk.CTkScrollableFrame._mouse_wheel_all = _smooth_wheel
 
 
 def font(size=14, weight="normal", mono=False):
@@ -879,6 +942,109 @@ def background_thumb(key, w=120, h=68):
     return _bg_thumbs[k]
 
 
+def appearance_preview(settings, dark):
+    """A small picture of the vault with the chosen colors, font, style, background,
+    dim and see-through setting, so you can see a change without leaving Settings."""
+    from PIL import Image, ImageDraw, ImageFont
+    k = 2                                   # drawn at 2x for sharp text
+    W, H = 560 * k, 236 * k
+    c = (lambda pair: pair[1] if dark else pair[0])
+    rgb = (lambda pair: _hex(c(pair)))
+    key = settings.get("background", "none")
+    pic = background_picture(key, W, H, settings.get("bg_dim", "medium"), dark) if key != "none" else None
+    see = pic is not None and settings.get("see_through", True)
+    img = (pic.convert("RGBA") if pic is not None else Image.new("RGBA", (W, H), rgb(BG) + (255,)))
+    pixel = settings.get("style") == "pixel"
+    r = (lambda v: (2 if pixel else v) * k)
+    stem = next((st for kk, _f, st in FONT_CHOICES if kk == settings.get("font", "poppins")), "Poppins")
+
+    def fnt(size, bold=False):
+        try:
+            return ImageFont.truetype(_font_file(f"{stem}-{'Bold' if bold else 'Regular'}.ttf"), size * k)
+        except Exception:
+            return ImageFont.load_default()
+
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    edge = ((255, 255, 255, 70) if dark else (30, 34, 42, 70)) if see else rgb(BORDER) + (255,)
+
+    def box(x0, y0, x1, y1, rad, fill, outline=None, width=1):
+        d.rounded_rectangle([x0 * k, y0 * k, x1 * k, y1 * k], radius=r(rad), fill=fill, outline=outline,
+                            width=width * k)
+
+    def tint(kind):
+        if not see:
+            return rgb(SURFACE if kind == "row" else SIDE) + (255,)
+        a = {"row": (105, 125), "panel": (150, 165)}[kind]
+        return rgb(BG) + ((a[0] if dark else a[1]),)
+
+    def text(x, y, t, size, color, bold=False, anchor="lm"):
+        f = fnt(size, bold)
+        if see:
+            d.text((x * k + k, y * k + k), t, font=f, fill=rgb(BG) + (255,), anchor=anchor)
+        d.text((x * k, y * k), t, font=f, fill=(color if isinstance(color, tuple) and len(color) == 4
+                                                else rgb(color) + (255,)), anchor=anchor)
+        return d.textlength(t, font=f) / k
+
+    # sidebar
+    box(8, 8, 150, H / k - 8, 12, tint("panel"), edge)
+    logo = draw_logo(22 * k, tile=False, light=not dark)
+    layer.alpha_composite(logo, (18 * k, 18 * k))
+    wx = 46 + text(46, 29, "Hush", 13, BRAND_GREEN, True)
+    text(wx, 29, "Key", 13, GOLD, True)
+    box(14, 50, 144, 74, 8, rgb(ACCENT_SOFT) + ((215 if see else 255),))
+    box(22, 58, 30, 66, 2, rgb(ACCENT) + (255,))
+    text(38, 62, "All Logins", 11, ACCENT, True)
+    star = _star_pil(True, 11 * k, dark)
+    layer.alpha_composite(star, (20 * k, 81 * k))
+    text(38, 87, "Favorites", 11, TEXT)
+    text(22, 110, "FOLDERS", 8, SUBTLE, True)
+    d.ellipse([22 * k, 123 * k, 29 * k, 130 * k], fill=(140, 158, 255, 255))
+    text(38, 127, "Gaming", 11, TEXT)
+    box(14, H / k - 58, 144, H / k - 14, 10, tint("row"), edge)
+    d.arc([22 * k, (H / k - 50) * k, 50 * k, (H / k - 22) * k], 0, 360, fill=(255, 255, 255, 40) if dark
+          else (0, 0, 0, 30), width=4 * k)
+    d.arc([22 * k, (H / k - 50) * k, 50 * k, (H / k - 22) * k], -90, 200, fill=_hex(health_color(82, dark)) + (255,),
+          width=4 * k)
+    text(58, H / k - 42, "Vault Health", 10, TEXT, True)
+    text(58, H / k - 28, "Good · 82/100", 9, (health_color(82, False), health_color(82, True)))
+
+    # top bar
+    x0, x1 = 164, W / k - 12
+    text(x0, 24, "All Logins", 15, TEXT, True)
+    bw = text(0, -50, "+  Add Login", 11, ACCENT_INK, True) + 28
+    box(x1 - bw, 12, x1, 36, 9, rgb(ACCENT) + (255,))
+    text(x1 - bw / 2, 24, "+  Add Login", 11, ACCENT_INK, True, anchor="mm")
+    box(x0, 44, x1, 66, 8, rgb(SURFACE) + (255,), rgb(BORDER) + (255,))
+    text(x0 + 10, 55, "Search your logins", 10, SUBTLE)
+
+    # logins
+    rows = [("Netflix (family)", "netflix", "Used twice", True), ("Spotify", "spotify", "", False),
+            ("Steam", "steam", "", False)]
+    y = 76
+    for title, slug, note, on in rows:
+        fill = rgb(ACCENT_SOFT) + ((205 if see else 255),) if on else tint("row")
+        box(x0, y, x1, y + 42, 10, fill, rgb(ACCENT) + (255,) if on else edge, 2 if on else 1)
+        box(x0 + 8, y + 7, x0 + 36, y + 35, 7, rgb(RAISED) + ((235 if see else 255),))
+        icon = brand_icons.render(slug, 18 * k, light=not dark)
+        if icon is not None:
+            layer.alpha_composite(icon.convert("RGBA"), ((x0 + 13) * k, (y + 12) * k))
+        text(x0 + 46, y + 15, title, 11, TEXT, True)
+        text(x0 + 46, y + 29, "••••••••", 9, MUTED)
+        if note:
+            nx = x1 - 30 - text(0, -50, note, 9, SUBTLE)
+            d.ellipse([(nx - 9) * k, (y + 18) * k, (nx - 4) * k, (y + 23) * k], fill=_hex(c(STRENGTH_COLORS[2])) + (255,))
+            text(nx, y + 21, note, 9, SUBTLE)
+        layer.alpha_composite(_star_pil(on, 13 * k, dark), (int((x1 - 22) * k), int((y + 14) * k)))
+        y += 48
+    img.alpha_composite(layer)
+    out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    mask = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, W - 1, H - 1], radius=r(14), fill=255)
+    out.paste(img, (0, 0), mask)
+    return out
+
+
 def _hex(c):
     c = c.lstrip("#")
     return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
@@ -1111,16 +1277,9 @@ class ArtList(_Glass, ctk.CTkFrame):
         x, y = c.winfo_pointerx() - c.winfo_rootx(), c.winfo_pointery() - c.winfo_rooty()
         if not (0 <= x < c.winfo_width() and 0 <= y < c.winfo_height()):
             return
-        if e.num == 4:
-            step = -1
-        elif e.num == 5:
-            step = 1
-        elif not getattr(e, "delta", 0):
-            return
-        else:
-            d = -e.delta if IS_MAC else -e.delta / 120
-            step = int(d * 3) or (1 if d > 0 else -1)
-        c.yview_scroll(step, "units")
+        px = wheel_pixels(e)
+        if px:
+            smooth_scroll(c, px)
 
     def _scrolled(self, a, b):
         a, b = float(a), float(b)
@@ -1421,11 +1580,29 @@ class GlassMain(_Glass, ctk.CTkFrame):
             right = W - int((self.PANEL if a.settings.get("panel_open", True) else self.RAIL) * sc)
         self._sidebar(m, m, side, H - m)
         self._main(side + int(16 * sc), right - int(16 * sc), W, H)
+        is_open = a.sel_id is not None and a.settings.get("panel_open", True)
         if a.sel_id is not None:
-            if a.settings.get("panel_open", True):
+            before = set(c.find_all())
+            if is_open:
                 self._panel(right, m, W - m, H - m)
             else:
                 self._rail(right, m, W - m, H - m)
+            tag = f"panel{self._n}"
+            self._n += 1
+            for i in c.find_all():
+                if i not in before:
+                    c.addtag_withtag(tag, i)
+            if is_open and not getattr(self, "_was_open", False) and a.animate:
+                shift = W - right   # slide in from the right edge
+                c.move(tag, shift, 0)
+                moved = [shift]
+
+                def slide(p):
+                    step = shift * (1 - p) - moved[0]
+                    c.move(tag, step, 0)
+                    moved[0] += step
+                a.glide(8, slide)
+        self._was_open = is_open
         c.tag_lower("pic")
         c.tag_raise("win")
 
@@ -1904,7 +2081,7 @@ class HushKeyApp(ctk.CTk):
             self._forget_auto_signin(addr)
             self.last_email = addr
             return self.show_signin((notice + " " if notice else "") + str(exc), ok=False)
-        self._enter(v, addr)
+        self._enter(v, addr, full=False)
         self._status(text=(notice + " " if notice else "") + "Signed in automatically.",
                               text_color=ACCENT)
 
@@ -1949,12 +2126,52 @@ class HushKeyApp(ctk.CTk):
 
     # ---------------------------------------------------------------- helpers
 
+    # ---------------------------------------------------------------- smooth transitions
+
+    @property
+    def animate(self):
+        return self.settings.get("animations", True) and not getattr(self, "_testing", False)
+
+    def glide(self, steps, apply, done=None, ms=12):
+        """Run a short animation: apply(t) for t from 0 to 1 with an ease-out curve.
+        About 100 ms in total, so it feels quick and never holds anything up."""
+        if not self.animate:
+            apply(1.0)
+            return done() if done else None
+        token = object()
+        self._glide_token = getattr(self, "_glide_token", {})
+
+        def step(i=1):
+            t = i / steps
+            try:
+                apply(1 - (1 - t) ** 3)
+            except Exception:
+                return
+            if i < steps:
+                self.after(ms, lambda: step(i + 1))
+            elif done:
+                done()
+        step()
+        return token
+
+    def _fade_in(self):
+        """The new screen fades in quickly instead of popping in."""
+        if not self.animate or getattr(self, "_no_fade", False):
+            return
+        try:
+            self.attributes("-alpha", 0.82)
+        except Exception:
+            return
+        self.after(16, lambda: self.glide(7, lambda t: self.attributes("-alpha", 0.82 + 0.18 * t)))
+
     def _clear(self):
+        self._fade_in()
         self.screen += 1
         self.rows = {}
         self.revealed_id = None
         self._secret_widgets = {}
         self._on_security = False
+        self._settings_body = None
         self.listbox = None
         self.art = None
         self.glass = None
@@ -2351,6 +2568,8 @@ class HushKeyApp(ctk.CTk):
                 return CombineDialog(self, exc.cloud_data)
             except TamperError as exc:
                 return self._sync_finished("error", str(exc))
+            if v.this_computer_removed():
+                return self._computer_removed()
             if id(v._data) != before and hasattr(self, "listbox") and self.listbox.winfo_exists():
                 self.refresh_rows()   # changes arrived from another computer
             self.run_quiet(lambda: syncer.upload(plan), lambda _: self._sync_finished("ok"), failed)
@@ -2365,6 +2584,24 @@ class HushKeyApp(ctk.CTk):
                 self._sync_finished("error", "Sync hit a problem. It will try again.")
 
         self.run_quiet(syncer.fetch, fetched, failed)
+
+    def _computer_removed(self):
+        """Another of your computers removed this one: sign out and delete the copy here.
+        Your vault is safe in your account; sign in again any time with your email."""
+        v, addr = self.vault, self.vault.email
+        self._sync_busy = False
+        try:
+            if self.syncer is not None:
+                self.syncer.forget()
+            v.disable_auto_signin()
+        except Exception:
+            traceback.print_exc()
+        self._forget_auto_signin(addr)
+        v.delete_local_copy()
+        self.vault, self.syncer = None, None
+        self.last_email = addr
+        self.show_signin("This computer was removed from your HushKey account on another computer, so the "
+                         "copy here was deleted. To use it again, sign in with your email and master password.")
 
     def _sync_finished(self, state=None, message=""):
         self._sync_busy = False
@@ -2475,7 +2712,7 @@ class HushKeyApp(ctk.CTk):
         confirm.bind_enter(submit)
         email.focus_set()
 
-    def _enter(self, v: Vault, addr: str):
+    def _enter(self, v: Vault, addr: str, full=True):
         if self.vault is not v:
             self.view, self.sel_id = "all", None
             self._leaked_hashes, self._leak_done, self._leak_checked = set(), False, 0
@@ -2491,6 +2728,10 @@ class HushKeyApp(ctk.CTk):
                     traceback.print_exc()
             self._last_session = None
             v.on_change = self.request_sync
+        try:
+            v.touch_computer(signed_in=full)   # for the list in Settings > Sync & devices
+        except Exception:
+            traceback.print_exc()
         self.show_main()
         if self.syncer is not None:
             self.request_sync(delay=300)
@@ -2772,6 +3013,7 @@ class HushKeyApp(ctk.CTk):
         self._update_slot.pack(side="right", padx=(0, 8))
         self._show_update_link()
 
+        self._panel_was_open = False
         self.panel = ctk.CTkFrame(root, fg_color=SIDE, corner_radius=0, width=372)
         self.panel.pack_propagate(False)
         self.rail = ctk.CTkFrame(root, fg_color=SIDE, corner_radius=0, width=46)
@@ -3362,7 +3604,8 @@ class HushKeyApp(ctk.CTk):
         if host is None or not host.winfo_exists():
             return self._status(text, ACCENT)
         t = ctk.CTkFrame(host, fg_color=TOAST_BG, corner_radius=12)
-        t.place(relx=0.5, rely=1.0, y=-48, anchor="s")
+        t.place(relx=0.5, rely=1.0, y=-20, anchor="s")
+        self.glide(8, lambda p: t.winfo_exists() and t.place(y=-20 - 28 * p))
         self._toast_frame = t
         ctk.CTkLabel(t, text=text, font=font(13), text_color=TOAST_FG).pack(side="left", padx=(16, 8), pady=8)
 
@@ -3393,12 +3636,19 @@ class HushKeyApp(ctk.CTk):
         self._panel_line.grid_forget()
         self._revealed = {"user": False, "pass": False}
         if self.sel_id is None:
+            self._panel_was_open = False
             return
         self._panel_line.grid(row=0, column=3, sticky="ns")
         if not self.settings.get("panel_open", True):
+            self._panel_was_open = False
             self.rail.grid(row=0, column=4, sticky="ns")
             return
+        was_open = getattr(self, "_panel_was_open", False)
         self.panel.grid(row=0, column=4, sticky="ns")
+        self._panel_was_open = True
+        if not was_open:
+            panel = self.panel
+            self.glide(8, lambda p: panel.winfo_exists() and panel.configure(width=int(60 + 312 * p)))
         try:
             e = self.vault.get(self.sel_id)
         except VaultError:
@@ -3580,7 +3830,8 @@ class HushKeyApp(ctk.CTk):
             return self._close_menu()
         m = ctk.CTkFrame(self._main, fg_color=SURFACE, corner_radius=14, border_width=1, border_color=BORDER,
                          width=260)
-        m.place(relx=1.0, x=-26, y=64, anchor="ne")
+        m.place(relx=1.0, x=-26, y=52, anchor="ne")
+        self.glide(6, lambda p: m.winfo_exists() and m.place(y=52 + 12 * p))
         m.lift()
         self._menu = m
         head = ctk.CTkFrame(m, fg_color="transparent")
@@ -3741,13 +3992,21 @@ class HushKeyApp(ctk.CTk):
         return page
 
     def show_settings(self, tab="general"):
+        # picking something on the same tab keeps your place instead of jumping back to the top
+        keep = None
+        old = getattr(self, "_settings_body", None)
+        if getattr(self, "_settings_tab", None) == tab and old is not None and old.winfo_exists():
+            keep = old._parent_canvas.yview()[0]
+        self._no_fade = keep is not None
         page = self._page_frame()
-        page.grid_rowconfigure(0, weight=1)
+        self._no_fade = False
+        page.grid_rowconfigure(1, weight=1)
         page.grid_columnconfigure(2, weight=1)
         nav = ctk.CTkFrame(page, fg_color=SIDE, corner_radius=0, width=236)
-        nav.grid(row=0, column=0, sticky="ns")
+        nav.grid(row=0, column=0, rowspan=2, sticky="ns")
         nav.pack_propagate(False)
-        ctk.CTkFrame(page, fg_color=BORDER, corner_radius=0, width=1).grid(row=0, column=1, sticky="ns")
+        ctk.CTkFrame(page, fg_color=BORDER, corner_radius=0, width=1).grid(row=0, column=1, rowspan=2,
+                                                                          sticky="ns")
         link_button(nav, "←  Back to vault", self.show_main, size=13, color=MUTED).pack(anchor="w", padx=16,
                                                                                          pady=(20, 6))
         ctk.CTkLabel(nav, text="Settings", font=font(24, "bold"), text_color=TEXT, anchor="w").pack(
@@ -3762,15 +4021,29 @@ class HushKeyApp(ctk.CTk):
                       fg_color=DANGER_SOFT, hover_color=DANGER_BORDER, text_color=SIGNOUT,
                       font=font(14, "bold")).pack(side="bottom", fill="x", padx=10, pady=16)
 
+        if tab == "appearance":   # a live preview that stays put while you scroll the choices
+            top = ctk.CTkFrame(page, fg_color="transparent")
+            top.grid(row=0, column=2, sticky="ew", padx=34, pady=(18, 0))
+            ctk.CTkLabel(top, text="PREVIEW", font=font(11, "bold"), text_color=SUBTLE, anchor="w").pack(fill="x")
+            pic = appearance_preview(self.settings, self.is_dark)
+            ctk.CTkLabel(top, text="", image=ctk.CTkImage(light_image=pic, dark_image=pic,
+                                                          size=(pic.width // 2, pic.height // 2))).pack(
+                anchor="w", pady=(4, 0))
+            ctk.CTkFrame(page, fg_color=BORDER, corner_radius=0, height=1).grid(row=0, column=2, sticky="sew",
+                                                                               padx=34)
         body = ctk.CTkScrollableFrame(page, fg_color="transparent", corner_radius=0)
-        body.grid(row=0, column=2, sticky="nsew")
+        body.grid(row=1, column=2, sticky="nsew")
+        self._settings_body, self._settings_tab = body, tab
         inner = ctk.CTkFrame(body, fg_color="transparent")
-        inner.pack(fill="both", expand=True, padx=34, pady=24)
+        inner.pack(fill="both", expand=True, padx=34, pady=(14 if tab == "appearance" else 24, 24))
         title = dict(self.SETTINGS_TABS)[tab]
         ctk.CTkLabel(inner, text=title, font=font(24, "bold"), text_color=TEXT, anchor="w").pack(fill="x")
         getattr(self, "_settings_" + tab)(inner)
         self.status = ctk.CTkLabel(inner, text="", font=font(12), text_color=MUTED, anchor="w")
         self.status.pack(fill="x", pady=(18, 0))
+        if keep:
+            body.update_idletasks()
+            body._parent_canvas.yview_moveto(keep)
 
     def _section(self, parent, title, sub=""):
         ctk.CTkLabel(parent, text=title, font=font(15, "bold"), text_color=TEXT, anchor="w").pack(
@@ -3911,6 +4184,9 @@ class HushKeyApp(ctk.CTk):
             set_font(self.settings.get("font", "poppins"))
             self.show_settings("appearance")
         self._choice_row(c, [("basic", "Basic"), ("pixel", "Pixel")], style, set_style)
+        self._switch_row(c, "Smooth animations", "Screens fade in, and the details panel, menus and messages "
+                                                 "slide in quickly. Turn off for instant changes.",
+                         "animations", default=True)
         cur = self.settings.get("font", "poppins")
         self._section(c, "Font")
 
@@ -4016,9 +4292,70 @@ class HushKeyApp(ctk.CTk):
             state.configure(text="Sync is off", text_color=GOLD)
             self.recovery_btn = primary_button(c, "Turn on sync", self.turn_on_recovery, height=40, width=160)
             self.recovery_btn.pack(anchor="w", pady=(10, 0))
+        self._settings_computers(c, on)
         self._section(c, "Email recovery", "On: you can reset a forgotten master password with a code sent "
                                            "to your email." if self.vault.has_recovery else
                       "Off: turn on sync to also turn on email recovery.")
+
+    def _settings_computers(self, c, sync_on):
+        self._section(c, "Your computers", "Every computer that has opened your vault. Don't recognize one? "
+                                           "Remove it.")
+        try:
+            items = self.vault.computers()
+        except VaultError:
+            items = []
+        for comp in items:
+            card = ctk.CTkFrame(c, fg_color=SURFACE, corner_radius=12, border_width=1, border_color=BORDER)
+            card.pack(fill="x", pady=(10, 0))
+            words = ctk.CTkFrame(card, fg_color="transparent")
+            words.pack(side="left", fill="x", expand=True, padx=16, pady=10)
+            top = ctk.CTkFrame(words, fg_color="transparent")
+            top.pack(fill="x")
+            ctk.CTkLabel(top, text=comp.get("name") or "Computer", font=font(14, "bold"), text_color=TEXT,
+                         anchor="w").pack(side="left")
+            if comp["this"]:
+                ctk.CTkLabel(top, text=" This computer ", font=font(11, "bold"), text_color=ACCENT,
+                             fg_color=ACCENT_SOFT, corner_radius=8).pack(side="left", padx=(8, 0))
+            if comp.get("removed"):
+                line = f"{comp.get('system', '')} · Removed. It signs out the next time it connects."
+                color = DANGER
+            else:
+                line = f"{comp.get('system', '')} · Last used {ago_seconds(comp.get('last') or 0)}"
+                color = MUTED
+            ctk.CTkLabel(words, text=line, font=font(12), text_color=color, anchor="w").pack(fill="x")
+            if not comp["this"] and not comp.get("removed"):
+                ctk.CTkButton(card, text="Remove", command=lambda k=comp["key"], n=comp.get("name"):
+                              self.remove_computer(k, n), width=90, height=34, corner_radius=10,
+                              fg_color=DANGER_SOFT, hover_color=DANGER_BORDER, text_color=SIGNOUT,
+                              font=font(13, "bold")).pack(side="right", padx=14)
+        if not sync_on:
+            ctk.CTkLabel(c, text="Turn on sync to see your other computers here.", font=font(12),
+                         text_color=SUBTLE, anchor="w").pack(fill="x", pady=(8, 0))
+
+    def remove_computer(self, key, name):
+        if not messagebox.askyesno(
+                APP_NAME, f"Remove “{name}” from your HushKey account?\n\n"
+                "• That computer signs out and deletes its copy of your vault the next time it connects.\n"
+                "• To be safe, all your other computers are also signed out of sync right away. "
+                "They'll ask for an email code once, then keep syncing.\n\n"
+                "If you don't recognize this computer, also change your master password "
+                "(Settings › Security).", parent=self, icon="warning"):
+            return
+        try:
+            self.vault.remove_computer(key)
+        except VaultError as exc:
+            return self._status(str(exc), DANGER)
+        self.show_settings("sync")
+        self._status(f"“{name}” was removed.", ACCENT)
+        if self.syncer is not None:
+            def done(_):
+                self._status(f"“{name}” was removed, and other computers were signed out of sync.", ACCENT)
+                self.request_sync(delay=0)
+
+            def failed(exc):
+                self._status(f"“{name}” was removed. It signs out the next time it syncs.", MUTED)
+                self.request_sync(delay=0)
+            self.run_quiet(self.syncer.sign_out_others, done, failed)
 
     def _settings_import(self, c):
         self._section(c, "Import", "Bring your logins over from Google, Chrome, or another password manager.")
@@ -5199,6 +5536,10 @@ def selftest() -> int:
         lambda: app.settings.update(style="pixel", font="pixel", bg_signin=True),
         lambda: (globals().update(STYLE="pixel"), set_font("pixel"), app.show_settings("appearance")),
         lambda: app.show_main(),
+        lambda: require(any(c["this"] for c in app.vault.computers()), "this computer is listed"),
+        lambda: app.show_settings("sync"),
+        lambda: app.show_settings("appearance"),
+        lambda: require(appearance_preview(app.settings, app.is_dark).size == (1120, 472), "appearance preview draws"),
         lambda: (globals().update(STYLE="basic"), set_font("poppins"), app.settings.update(style="basic",
                                                                                            font="poppins")),
         lambda: app.toggle_theme(),
