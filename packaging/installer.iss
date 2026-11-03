@@ -3,7 +3,7 @@
 ; installs per-user (no admin prompt) with a Start Menu shortcut.
 
 #ifndef MyAppVersion
-  #define MyAppVersion "2.0.10"
+  #define MyAppVersion "2.0.11"
 #endif
 
 [Setup]
@@ -26,7 +26,7 @@ OutputBaseFilename=HushKey-Windows
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-UninstallDisplayIcon={app}\HushKey.ico
+UninstallDisplayIcon={app}\HushKey-{#MyAppVersion}.ico
 SetupIconFile=..\assets\HushKey.ico
 ; Updating: close a running HushKey first so every file really gets replaced
 CloseApplications=force
@@ -36,15 +36,21 @@ UsePreviousAppDir=yes
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
 
+[InstallDelete]
+; remove the previous version's logo files (see below)
+Type: files; Name: "{app}\HushKey*.ico"
+
 [Files]
 Source: "..\dist\HushKey\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
-; the logo as its own file, so shortcuts can't keep showing an old cached icon
-Source: "..\assets\HushKey.ico"; DestDir: "{app}"; Flags: ignoreversion
+; The logo as its own file, with the version in its name. Windows remembers
+; shortcut icons by file name, so a new name makes it show the new logo
+; right away instead of an old cached one.
+Source: "..\assets\HushKey.ico"; DestDir: "{app}"; DestName: "HushKey-{#MyAppVersion}.ico"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\HushKey"; Filename: "{app}\HushKey.exe"; IconFilename: "{app}\HushKey.ico"
+Name: "{group}\HushKey"; Filename: "{app}\HushKey.exe"; IconFilename: "{app}\HushKey-{#MyAppVersion}.ico"
 Name: "{group}\Uninstall HushKey"; Filename: "{uninstallexe}"
-Name: "{userdesktop}\HushKey"; Filename: "{app}\HushKey.exe"; IconFilename: "{app}\HushKey.ico"; Tasks: desktopicon
+Name: "{userdesktop}\HushKey"; Filename: "{app}\HushKey.exe"; IconFilename: "{app}\HushKey-{#MyAppVersion}.ico"; Tasks: desktopicon
 
 [Run]
 ; ask Windows to refresh its icon memory so the new logo shows right away

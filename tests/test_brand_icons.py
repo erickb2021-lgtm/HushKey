@@ -39,10 +39,18 @@ class BrandIconTests(unittest.TestCase):
     def test_popular_when_empty(self):
         self.assertEqual(brand_icons.search("")[0][0], "google")
 
-    def test_top_50_all_available(self):
+    def test_top_apps_all_available(self):
         top = brand_icons.sections()[0]
-        self.assertEqual(top[0], "Top 50 apps & games")
-        self.assertEqual(len(top[1]), 50)
+        self.assertEqual(top[0], "Top apps & games")
+        self.assertEqual(len(top[1]), 125)      # the first 50 + 75 added in v2.0.11
+
+    def test_restaurants(self):
+        self.assertEqual(brand_icons.suggest("McDonalds"), "mcdonalds")
+        self.assertEqual(brand_icons.suggest("Starbucks rewards"), "starbucks")
+        self.assertEqual(brand_icons.suggest("Dominos"), "hk-pizza")      # no shared logo: pizza icon
+        self.assertEqual(brand_icons.suggest("Chipotle"), "hk-food")
+        self.assertEqual(brand_icons.suggest("Wendys"), "hk-burger")
+        self.assertEqual(brand_icons.suggest("Dunkin"), "hk-coffee")
 
     def test_big_names_ranked_first(self):
         self.assertEqual([t for _, t in brand_icons.search("s", 3)], ["Snapchat", "Spotify", "Steam"])

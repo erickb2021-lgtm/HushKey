@@ -44,7 +44,8 @@ EVERYDAY = [
     ["hk-email", "Email", "6CB6FF", "M2 5h20v14H2ZM4 7v.5l8 5.5 8-5.5V7l-8 5.5Z",
      ["email", "mail", "inbox", "outlook", "yahoo", "hotmail", "aol"]],
     ["hk-shopping", "Shopping", "FF9F5A", "M5 7h14l-1 15H6ZM9 7V6a3 3 0 0 1 6 0v1h-2V6a1 1 0 0 0-2 0v1Z",
-     ["shopping", "shop", "store", "amazon", "walmart", "costco", "best buy", "nike", "shein"]],
+     ["shopping", "shop", "store", "amazon", "walmart", "costco", "best buy", "shein", "temu", "home depot",
+      "lowes", "sephora", "ulta", "macys", "kohls", "hm", "h&m", "gap", "old navy", "dollar general"]],
     ["hk-chat", "Chat", "B18CFF",
      "M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z",
      ["chat", "messages", "messaging", "texting", "slack", "teams", "skype"]],
@@ -52,7 +53,7 @@ EVERYDAY = [
      ["music", "songs", "audio", "soundcloud", "pandora", "apple music"]],
     ["hk-video", "Video", "FF6B6B",
      "M3 4h18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM10 8.5v7l6-3.5Z",
-     ["video", "movies", "tv", "streaming", "hulu", "disney", "prime video", "peacock", "paramount"]],
+     ["video", "movies", "tv", "streaming", "hulu", "disney", "prime video", "peacock"]],
     ["hk-cloud", "Cloud", "8FD3FF",
      "M7 19a5 5 0 0 1-.6-10A7 7 0 0 1 19.6 9.5 4.8 4.8 0 0 1 18 19Z",
      ["cloud", "storage", "backup", "onedrive", "box"]],
@@ -67,6 +68,23 @@ EVERYDAY = [
      "M11 6h2v1.1c1.7.3 3 1.4 3 2.9h-2c0-.6-.9-1-2-1s-2 .4-2 1 .9 1 2 1c2.2 0 4 1.1 4 3 0 1.5-1.3 2.6-3 2.9V18h-2v-1.1"
      "c-1.7-.3-3-1.4-3-2.9h2c0 .6.9 1 2 1s2-.4 2-1-.9-1-2-1c-2.2 0-4-1.1-4-3 0-1.5 1.3-2.6 3-2.9Z",
      ["money", "cash", "crypto", "wallet", "payment", "investing", "stocks"]],
+    ["hk-food", "Restaurant", "FFA64D",
+     "M5 2h1.5v6H8V2h1.5v6H11V2h1.5v7a3 3 0 0 1-2.5 3V22H8V12a3 3 0 0 1-3-3ZM18.5 2C16 3.5 15 6 15 9v4h2v9h2V2Z",
+     ["food", "restaurant", "takeout", "take out", "delivery", "dinner", "lunch", "grubhub", "seamless",
+      "chipotle", "chickfila", "chick fil a", "popeyes", "subway", "panera", "panera bread", "panda express",
+      "olive garden", "applebees", "chilis", "wingstop", "jollibee", "nandos", "arbys", "qdoba", "raising canes"]],
+    ["hk-pizza", "Pizza", "FF6B6B",
+     "M12 2C7.5 2 3.6 3.9 1.5 6.5L12 22 22.5 6.5C20.4 3.9 16.5 2 12 2ZM9 8.5a1.6 1.6 0 1 0 0 3.2a1.6 1.6 0 0 0 0-3.2Z"
+     "M14.8 11a1.6 1.6 0 1 0 0 3.2a1.6 1.6 0 0 0 0-3.2ZM12 4.2c3 0 5.8 1 7.6 2.7l-.9 1.3C17.2 6.8 14.7 6 12 6S6.8 6.8 5.3 8.2l-.9-1.3C6.2 5.2 9 4.2 12 4.2Z",
+     ["pizza", "dominos", "domino's", "pizza hut", "pizzahut", "papa johns", "papajohns", "little caesars",
+      "marcos pizza", "round table"]],
+    ["hk-burger", "Burger", "F2C14E",
+     "M3 10.5A9 7 0 0 1 21 10.5ZM2 12.5h20v3H2ZM3 17.5h18a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3Z",
+     ["burger", "burgers", "wendys", "wendy's", "five guys", "in n out", "innout", "whataburger", "shake shack",
+      "culvers", "sonic", "carls jr", "jack in the box", "white castle", "smashburger"]],
+    ["hk-coffee", "Coffee", "C9A27E",
+     "M3 8h14v6a6 6 0 0 1-6 6H9a6 6 0 0 1-6-6ZM17 9.5h1.5a3 3 0 0 1 0 6H17v-2h1.5a1 1 0 0 0 0-2H17ZM7 2h2v4H7ZM11 2h2v4h-2Z",
+     ["coffee", "cafe", "dunkin", "dunkin donuts", "tim hortons", "dutch bros", "peets", "caribou", "tea"]],
     ["hk-heart", "Heart", "FF6F91", "M12 21 3.5 12.6A5 5 0 0 1 12 6a5 5 0 0 1 8.5 6.6Z",
      ["heart", "love", "dating", "favorite", "health"]],
     ["hk-star", "Star", "F2C14E", "M12 2l3 6.5 7 .8-5.2 4.8 1.4 7L12 17.6 5.8 21.1l1.4-7L2 9.3l7-.8Z",
@@ -85,9 +103,9 @@ EVERYDAY = [
 ]
 _EVERYDAY_SLUGS = {e[0] for e in EVERYDAY}
 
-# The 50 best-known apps, banks, streaming services and games, most popular
-# first. This is what the dropdown shows before you type, and these are
-# ranked first in search results. (Amazon, Microsoft/Xbox/Outlook, LinkedIn,
+# The best-known apps, banks, streaming services, games, stores and
+# restaurants, most popular first. This is what the dropdown shows before you
+# type ("Top apps & games"), and these are ranked first in search results. (Amazon, Microsoft/Xbox/Outlook, LinkedIn,
 # Disney+, Hulu, Minecraft and Nintendo don't allow their logos to be shared,
 # so they use an everyday icon or "Use my own picture" instead.)
 TOP_50 = ["google", "youtube", "gmail", "apple", "icloud", "instagram", "facebook", "whatsapp",
@@ -96,7 +114,18 @@ TOP_50 = ["google", "youtube", "gmail", "apple", "icloud", "instagram", "faceboo
           "coinbase", "uber", "doordash", "airbnb", "ebay", "github", "zoom", "dropbox",
           "pinterest", "telegram", "messenger", "steam", "epicgames", "playstation", "roblox",
           "fortnite", "riotgames", "leagueoflegends", "valorant", "battledotnet", "ea", "ubisoft",
-          "activision", "rockstargames", "chessdotcom", "duolingo"]
+          "activision", "rockstargames", "chessdotcom", "duolingo",
+          # added in v2.0.11: food, shopping, streaming, social, money, travel and more
+          "mcdonalds", "starbucks", "burgerking", "kfc", "tacobell", "ubereats", "instacart", "postmates",
+          "deliveroo", "justeat", "target", "etsy", "shopify", "aliexpress", "nike", "adidas", "ikea", "zara",
+          "newbalance", "puma", "wish", "hbomax", "hbo", "crunchyroll", "appletv", "youtubemusic", "applemusic",
+          "soundcloud", "pandora", "tidal", "deezer", "audible", "paramountplus", "plex", "vimeo", "threads",
+          "bluesky", "tumblr", "quora", "medium", "signal", "wechat", "line", "viber", "bereal", "mastodon",
+          "kakaotalk", "visa", "mastercard", "robinhood", "zelle", "discover", "klarna", "afterpay", "wise",
+          "revolut", "binance", "stripe", "lyft", "bookingdotcom", "expedia", "delta", "unitedairlines",
+          "southwestairlines", "americanairlines", "marriott", "hilton", "notion", "figma", "protonmail",
+          "samsung", "wordpress", "claude", "pubg", "counterstrike"]
+TOP = TOP_50   # kept under both names
 _TOP_RANK = {slug: i for i, slug in enumerate(TOP_50)}
 POPULAR = TOP_50
 
@@ -141,7 +170,7 @@ def sections():
 
     def pick(slugs):
         return [(s, _by_slug[s][1]) for s in slugs if s in _by_slug]
-    return [("Top 50 apps & games", pick(TOP_50)),
+    return [("Top apps & games", pick(TOP_50)),
             ("Everyday icons", pick([e[0] for e in EVERYDAY]))]
 
 
@@ -219,7 +248,7 @@ def search(query: str, limit: int = 8):
                 best -= 0.75
             elif slug in _EVERYDAY_SLUGS:
                 best -= 0.25
-            scored.append((best, _TOP_RANK.get(slug, 99), len(name), name.lower(), slug, name))
+            scored.append((best, _TOP_RANK.get(slug, 999), len(name), name.lower(), slug, name))
     scored.sort()
     return [(s[4], s[5]) for s in scored[:limit]]
 
@@ -238,6 +267,12 @@ def suggest(client_name: str):
             squashed = _norm(name).replace(" ", "")
             if first in brand_words or squashed == first or (len(first) >= 6 and squashed.startswith(first)):
                 return slug
+            if slug in _EVERYDAY_SLUGS:   # "Dominos" -> Pizza, "Chipotle" -> Restaurant
+                said = " ".join(words)
+                for kw in _by_slug[slug][4]:
+                    k = _norm(kw)
+                    if k == said or k.replace(" ", "") == said.replace(" ", ""):
+                        return slug
         words = words[:-1]
     return None
 

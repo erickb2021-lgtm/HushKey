@@ -522,7 +522,7 @@ class StrengthBar(ctk.CTkFrame):
 
 class LogoPicker(ctk.CTkFrame):
     """'Choose a logo for this login'. Type to search, or click the arrow to
-    browse the Top 50 apps & games and HushKey's everyday icons.
+    browse the top apps & games and HushKey's everyday icons.
 
     The list FLOATS on top of the form, like a dropdown on a website, so the
     pop-up window never has to grow (CustomTkinter pop-ups can't always grow,
@@ -2496,6 +2496,16 @@ class HushKeyApp(ctk.CTk):
                      ACCENT)
         self.after(CLIPBOARD_CLEAR_SECONDS * 1000, lambda: self.wipe_clipboard(token))
 
+    def copy_text(self, value, what="Password"):
+        """Copy any text; it's wiped from the clipboard after a short time."""
+        self.clipboard_clear()
+        self.clipboard_append(value)
+        token = object()
+        self.clip = (token, value)
+        self._status(f"{what} copied. It's cleared from your clipboard in {CLIPBOARD_CLEAR_SECONDS} seconds.",
+                     ACCENT)
+        self.after(CLIPBOARD_CLEAR_SECONDS * 1000, lambda: self.wipe_clipboard(token))
+
     def wipe_clipboard(self, token=None):
         if not self.clip or (token is not None and token is not self.clip[0]):
             return
@@ -3188,14 +3198,31 @@ class EntryDialog(Dialog):
         self.bar.pack(fill="x")
         self.pw.bind_key(lambda _e: self.bar.update_for(self.pw.get()))
 
-        self.gen = ctk.CTkButton(c, text="Click this to generate a password for you", command=self.generate,
-                                 height=50, corner_radius=12, fg_color=ACCENT_SOFT, hover_color=ACCENT_SOFT_HOVER,
-                                 border_width=2, border_color=ACCENT, text_color=ACCENT_HOVER,
-                                 font=font(14, "bold"))
-        self.gen.pack(fill="x", pady=(14, 4))
-        self.gen_hint = ctk.CTkLabel(c, text="We'll make a long, random password. Click as many times as you like.",
-                                     font=font(12), text_color=MUTED, wraplength=440)
-        self.gen_hint.pack(fill="x")
+        # Password generator: the new password is only shown and copied, never typed in for you,
+        # so your current password can't be replaced by accident. You paste it in yourself.
+        self.gen = ctk.CTkButton(c, text="Generate a strong password", command=self.generate, height=32, width=0,
+                                 corner_radius=9, fg_color="transparent", hover_color=ACCENT_SOFT,
+                                 border_width=1, border_color=ACCENT, text_color=ACCENT, font=font(13, "bold"))
+        self.gen.pack(anchor="w", pady=(12, 0))
+        self.gen_box = ctk.CTkFrame(c, fg_color=RAISED, corner_radius=10)
+        row = ctk.CTkFrame(self.gen_box, fg_color="transparent")
+        row.pack(fill="x", padx=10, pady=(10, 4))
+        self.gen_out = ctk.CTkEntry(row, height=34, corner_radius=8, fg_color=BG, border_color=BORDER,
+                                    text_color=TEXT, font=font(14, mono=True))
+        self.gen_out.pack(side="left", fill="x", expand=True)
+        primary_button(row, "Copy", self.copy_generated, width=64, height=34).pack(side="left", padx=(8, 0))
+        ctk.CTkButton(row, text="New one", command=self.generate, width=74, height=34, corner_radius=8,
+                      fg_color="transparent", hover_color=BORDER, border_width=1, border_color=BORDER,
+                      text_color=TEXT, font=font(12)).pack(side="left", padx=(6, 0))
+        paste = "Cmd+V" if IS_MAC else "Ctrl+V"
+        self.gen_hint = ctk.CTkLabel(
+            self.gen_box, text=f"To use it: click Copy, then paste it into the Password box above ({paste}). "
+                               + ("Your current password stays until you paste the new one in."
+                                  if current else "It's only saved once it's pasted in."),
+            font=font(12), text_color=GOLD, anchor="w", justify="left", wraplength=420)
+        self.gen_hint.pack(fill="x", padx=12, pady=(0, 10))
+        self.pw.bind_key(lambda _e: self._check_pasted())
+        self.pw.entry.bind("<<Paste>>", lambda _e: self.after(20, self._check_pasted), add="+")
 
         self.say = ctk.CTkLabel(c, text="", font=font(13), text_color=DANGER, anchor="w")
         self.say.pack(fill="x", pady=(8, 0))
@@ -3214,10 +3241,8 @@ class EntryDialog(Dialog):
             self.user.insert(0, current["username"])
             self.pw.set(current["password"])
             self.bar.update_for(current["password"])
-        if fresh:   # "Make a stronger one" / "Fix": start with a new strong password
+        if fresh:   # "Make a stronger one" / "Fix": show a new strong password to copy in
             self.generate()
-            self.gen_hint.configure(text="A new strong password is ready. Change it on the website too, "
-                                         "then click Save login.", text_color=GOLD)
         self.bind("<Return>", self._enter_key)
         self.bind("<Escape>", self._escape)
         self.center()
@@ -3237,21 +3262,39 @@ class EntryDialog(Dialog):
         self.save()
 
     def generate(self):
+        """Make a new password and SHOW it (read-only). It doesn't touch the
+        Password box: the user copies and pastes it in on purpose."""
         self.generated += 1
-        new = generate_password()
-        self.pw.set(new)
-        self.pw.set_visible(True)
-        self.bar.update_for(new)
-        self.gen.configure(text="Don't like it? Click again for a different one")
-        times = "once" if self.generated == 1 else f"{self.generated} times"
-        self.gen_hint.configure(text=f"Generated {times}. Keep clicking until you find one you like.")
+        self.new_password = generate_password()
+        self.gen_out.configure(state="normal")
+        self.gen_out.delete(0, "end")
+        self.gen_out.insert(0, self.new_password)
+        self.gen_out.configure(state="readonly")   # can be selected and copied, not typed in
+        if not self.gen_box.winfo_ismapped():
+            self.gen_box.pack(fill="x", pady=(8, 0), after=self.gen)
+            self.gen.pack_forget()
+        self._check_pasted()
+
+    def copy_generated(self):
+        self.app.copy_text(self.new_password, "New password")
+        self.gen_hint.configure(text="Copied! Now paste it into the Password box above "
+                                     f"({'Cmd' if IS_MAC else 'Ctrl'}+V).", text_color=GOLD)
+
+    def _check_pasted(self):
+        """Tell the user when the new password is really in the Password box."""
+        if self.bar is not None:
+            self.bar.update_for(self.pw.get())
+        new = getattr(self, "new_password", "")
+        if new and self.pw.get() == new:
+            self.gen_hint.configure(text="Pasted. Click Save login to keep it, and change it on the website "
+                                         "too.", text_color=ACCENT)
 
     def save(self):
         title, user, pw = self.name.get().strip(), self.user.get().strip(), self.pw.get()
         if not title:
             return self.say.configure(text="Type a client name first.")
         if not pw:
-            return self.say.configure(text="Type a password, or click the generate button.")
+            return self.say.configure(text="Type or paste a password first.")
         try:
             self.on_save(title, user, pw, self.logo.slug)
         except VaultError as exc:
@@ -3898,7 +3941,7 @@ def selftest() -> int:
         lambda: dialog().logo.toggle(),
         lambda: require(dialog().logo.open and len(dialog().logo.results.winfo_children()) > 60
                         and "Couldn't" not in str(dialog().logo.note.cget("text")),
-                        "logo dropdown opens with the Top 50 + everyday icons"),
+                        "logo dropdown opens with the top apps + everyday icons"),
         lambda: require(dialog()._escape() == "break" and not dialog().logo.open, "Escape closes the list"),
         lambda: (dialog().logo.search.insert(0, "riot"), dialog().logo.show_results()),
         lambda: require(dialog().logo.open, "typing opens the list"),

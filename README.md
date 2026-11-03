@@ -5,12 +5,12 @@
 <p align="center">A simple, private password manager for <b>Windows and Mac</b>.<br>Your logins are encrypted on your computer, and only you can open them.</p>
 
 <p align="center">
-  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.10 for Windows" src="https://img.shields.io/badge/Download_v2.0.10_for-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI0ZGRkZGRiIgZD0iTTAgMGgxMS4zNzd2MTEuMzcySDBabTEyLjYyMyAwSDI0djExLjM3MkgxMi42MjNaTTAgMTIuNjIzaDExLjM3N1YyNEgwWm0xMi42MjMgMEgyNFYyNEgxMi42MjNaIi8%2BPC9zdmc%2B&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.11 for Windows" src="https://img.shields.io/badge/Download_v2.0.11_for-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI0ZGRkZGRiIgZD0iTTAgMGgxMS4zNzd2MTEuMzcySDBabTEyLjYyMyAwSDI0djExLjM3MkgxMi42MjNaTTAgMTIuNjIzaDExLjM3N1YyNEgwWm0xMi42MjMgMEgyNFYyNEgxMi42MjNaIi8%2BPC9zdmc%2B&logoColor=white" height="44"></a>
   &nbsp;&nbsp;
-  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.10 for Mac" src="https://img.shields.io/badge/Download_v2.0.10_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.11 for Mac" src="https://img.shields.io/badge/Download_v2.0.11_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
 </p>
 
-<p align="center"><b>Latest version: v2.0.10</b> · <a href="../../releases">All releases</a></p>
+<p align="center"><b>Latest version: v2.0.11</b> · <a href="../../releases">All releases</a></p>
 
 ## Download
 
@@ -42,7 +42,7 @@ Older macOS: right-click HushKey → **Open** → **Open**.
 ## How to use it
 
 1. **Create a vault** with your email and a master password. You'll get an 8-digit code by email to confirm it's you.
-2. Click **+ Add login**. Type a name, username and password, or click the button to generate a strong password.
+2. Click **+ Add login** and type a name, username and password. Or click **Generate a strong password**, then **Copy** it and paste it into the Password box.
 3. **Click a login** to see its details. Usernames and passwords stay hidden until you click **Show**. **Copy** clears itself from your clipboard after 20 seconds.
 4. **Organize** with the star (Favorites) and **Folders** (click **+** in the sidebar).
 5. Everything else, like Settings, Security tips, Import, Export and Sign out, is in the menu at the top right.
@@ -82,48 +82,93 @@ HushKey is built with users first. Your privacy matters more than any feature.
 
 ## What's new
 
+### v2.0.11
+
+**New**
+- **Safer password generator:** "Generate a strong password" now shows a new password in its own box with **Copy** and **New one**. It never replaces your current password; it's only saved after you paste it into the Password box. HushKey tells you when it's pasted.
+- **Smaller generate button** so the form is less crowded.
+- **75 more logos** in the list, now called "Top apps & games": McDonald's, Starbucks, Burger King, KFC, Taco Bell, Uber Eats, Instacart, Target, Etsy, Nike, HBO Max, Crunchyroll, Apple Music, Visa, Robinhood, Lyft, Delta, Marriott, Notion and more.
+- **Food icons:** Restaurant, Pizza, Burger and Coffee. Typing a name like Domino's, Chipotle, Wendy's or Dunkin' picks the matching one, for places that don't share their logo.
+
+**Fixed**
+- The desktop and Start menu shortcuts kept showing the old logo after updating.
+
 ### v2.0.10
 
-- **New look:** a sidebar with All logins, Favorites, Folders and Vault health. The details panel opens when you click a login, and the arrow hides it again.
-- **New logo.**
-- **Favorites and folders:** star any login. Make folders, then add, move or remove logins with Undo.
-- **Hidden usernames** in the list, with a Show usernames button.
-- **Security tips** with a score. Suggestions are small and optional: **Not now** hides one for 30 days, **Don't remind me** hides it for good, and you can turn them all off.
-- **Leak check** that tells you if a password showed up in a known data leak, privately.
-- **Settings page:** lock timer (1 minute to 3 hours, or never), 21 accent colors, compact view, theme, sync and more.
-- **Quick unlock** after auto-lock: just your master password.
-- **Change master password** now asks "Are you sure?" first.
-- **The welcome screen** only shows for brand-new vaults.
-- **Fixed:** the "Turn on sync" banner stayed after you turned sync on.
+**New**
+- **New look:** a sidebar with All logins, Favorites, Folders and a Vault health score.
+- **Details panel** opens when you click a login, with Show and Copy for the username and password, a colored strength bar, and Edit or Delete. The arrow hides it, and a small tab brings it back.
+- **New logo,** inside the app and as the app icon.
+- **Favorites:** star any login, then find it under Favorites.
+- **Folders:** create, rename and delete them with any color. Add, move or remove logins, with **Undo**.
+- **Hidden usernames** in the list, with a **Show usernames** button.
+- **Comfortable or Compact** list.
+- **Security tips page** with a score, pointing out weak, reused or leaked passwords. Each tip has Fix, **Not now** (hides it for 30 days) and **Don't remind me**, and you can turn all tips off.
+- **Private leak check** using Have I Been Pwned. Only 5 characters of a scrambled version of each password are sent, and you can turn it off.
+- **Settings page:**
+  - General: lock timer from 1 minute to 3 hours, or never; forget this device.
+  - Appearance: theme, 21 accent colors, density.
+  - Security, Sync & devices, Import & export, and About.
+- **Profile menu** (top right) with Settings, Security tips, Import, Export, Sync, Help, and a red Sign out.
+- **Quick unlock** after auto-lock: just type your master password.
+- **"Are you sure?"** before changing your master password.
+- **Welcome screen** only for brand-new vaults.
 - **Tidier GitHub page:** code is now in folders.
+
+**Fixed**
+- The "Turn on sync" banner stayed after turning sync on.
+- Automatic updates didn't work in v2.0.9 because of a build setting. They work from v2.0.10 on.
 
 ### v2.0.9
 
-- Sync across computers.
-- Automatic updates.
-- The window opens where you left it.
+**New**
+- **Sync across computers:** sign in anywhere with your email, master password and an 8-digit code. Changes sync both ways about every minute, and only encrypted data is uploaded.
+- **Automatic updates:** a pop-up shows what's new, with **Update now** or **Later** (installs when you close HushKey).
+- **Window position:** opens centered the first time, then where you left it.
+- **Windows install guide** for Edge, SmartScreen and Smart App Control.
+
+**Fixed**
+- "Remembered until…" showed twice at the bottom of the app.
 
 ### v2.0.8
 
-- Remember this device for 30 days.
+**New**
+- **Remember this device for 30 days:** HushKey opens straight to your vault. Closing it keeps you remembered, **Sign out** turns it off, and it switches off by itself after 30 days.
 
 ### v2.0.7
 
-- 8-digit email codes everywhere.
-- Big vaults stay fast.
+**New**
+- **Mac first-launch steps** at the top of this page.
+- **Big vaults stay fast:** logins load 50 at a time, and search waits until you stop typing.
+
+**Fixed**
+- Some screens and emails said 6-digit codes; they're all 8 digits now.
 
 ### v2.0.6
 
-- Import from Google and other password managers.
-- Export to an encrypted backup or CSV.
+**New**
+- **Import** from Google, Bitwarden, LastPass, 1Password, Apple Passwords, Edge, Firefox or Dashlane, with a review step before anything is saved.
+- **The export file is securely deleted** after importing.
+- **Export** an encrypted backup (.hushkey) or a CSV file, and restore a backup with Import.
 
 ### v2.0.5
 
-- Fixed a crash on start.
+**Fixed**
+- HushKey could crash on start with "brand_icons.json.gz not found". The logo list and font are now built into the app.
 
 ### v2.0.4
 
-- Light and dark mode, a new font, a red Sign out button, and centered pop-ups.
+**New**
+- **Light and dark mode** with the key switch.
+- **Poppins font.**
+- **Red Sign out button.**
+- **Pop-ups open centered.**
+- **Version number** shown in the app.
+- **Email recovery** turns on for older vaults when you sign in.
+
+**Fixed**
+- The logo picker showed an empty list. It now opens the top apps & games plus everyday icons, searches 3,400+ logos, and has "Use my own picture".
+- Updating didn't always replace the running app or refresh the desktop icon.
 
 ## For developers
 
@@ -133,7 +178,7 @@ python app/app.py
 ```
 
 - **Folders:** `app/` holds the code, `tests/` the tests (`python -m unittest discover -s tests`), and `packaging/` the build and installer scripts. `supabase/` sets up the database, and `docs/` has the [email recovery setup](docs/SETUP_EMAIL_RECOVERY.md).
-- **Publishing:** upload your changes, then go to **Releases → Draft a new release**, use the next tag (like `v2.0.11`), and click **Publish**. GitHub tests and builds both apps, and everyone gets the update automatically.
+- **Publishing:** upload your changes, then go to **Releases → Draft a new release**, use the next tag (like `v2.0.12`), and click **Publish**. GitHub tests and builds both apps, and everyone gets the update automatically.
 
 ## Credits
 
