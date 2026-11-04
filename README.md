@@ -218,7 +218,7 @@ pip install -r requirements.txt
 python app/app.py
 ```
 
-- **Folders:** `app/` holds the code, `tests/` the tests (`python -m unittest discover -s tests`), and `packaging/` the build and installer scripts. `supabase/` sets up the database, and `docs/` has the [email recovery setup](docs/SETUP_EMAIL_RECOVERY.md).
+- **Folders:** `app/` holds the code, `tests/` the tests (`python -m unittest discover -s tests`), and `packaging/` the build and installer scripts. `supabase/` sets up the database.
 - **Publishing:** upload your changes, then go to **Releases → Draft a new release**, use the next tag (like `v2.0.15`), and click **Publish**. GitHub tests and builds both apps, and everyone gets the update automatically.
 
 ## Credits

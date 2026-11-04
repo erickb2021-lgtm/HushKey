@@ -1,5 +1,5 @@
 """
-Email settings for HushKey (Supabase). See SETUP_EMAIL_RECOVERY.md.
+Email settings for HushKey (Supabase).
 
 Is it safe to put these in a public GitHub repo? Yes. This is Supabase's
 "publishable" key, made to be shipped inside apps. It can't read anyone's
