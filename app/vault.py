@@ -33,6 +33,7 @@ import getpass
 import hashlib
 import hmac
 import json
+import math
 import os
 import platform
 import secrets
@@ -256,6 +257,19 @@ def password_strength(pw: str) -> tuple[int, str]:
     if len(pw) < 8:
         score = min(score, 1)
     return score, ["Very weak", "Weak", "Okay", "Strong", "Very strong"][score]
+
+
+def strength_fraction(pw: str) -> float:
+    """How hard a password is to guess, from 0.0 to 1.0, on a sliding scale (not in steps),
+    so the vault score can tell "a bit weak" from "very weak"."""
+    if not pw:
+        return 0.0
+    pool = (26 * any(c.islower() for c in pw) + 26 * any(c.isupper() for c in pw)
+            + 10 * any(c.isdigit() for c in pw) + 33 * any(not c.isalnum() for c in pw))
+    # repeating the same few characters ("aaaaaaaa1") doesn't make a password much harder to guess
+    length = min(len(pw), len(set(pw)) * 2.5)
+    bits = length * math.log2(max(pool, 2))
+    return max(0.0, min(1.0, (bits - 20) / 60))
 
 
 # --------------------------------------------------------------------------
@@ -853,7 +867,8 @@ class Vault:
             by_pw.setdefault(pw, []).append(e["id"])
             m = self._meta(e)
             rows[e["id"]] = {"id": e["id"], "title": self._dec(e["title"]), "icon": self._icon(e),
-                             "score": password_strength(pw)[0], "reused_with": [],
+                             "score": password_strength(pw)[0], "strength": strength_fraction(pw),
+                             "reused_with": [],
                              # a saved leak result counts until that password is changed
                              "leaked": (m.get("leaked") is not None
                                         and m.get("leaked") == (e.get("pw_changed") or e.get("created")))
@@ -1108,18 +1123,36 @@ class RecoveryReset:
         self._unlocked = None
 
 
+HEALTH_EASE = 0.8   # how much the problems count toward the score (1.0 = full weight)
+
+
+def login_risk(r: dict) -> float:
+    """0.0 (fine) to 1.0 (as bad as it gets) for one row of the security report.
+    It slides with how weak the password is and how many logins share it, so the
+    vault score moves a little or a lot depending on the actual problem."""
+    risks = []
+    if r.get("leaked"):
+        risks.append(0.85)
+    if r.get("reused_with"):
+        copies = len(r["reused_with"]) + 1
+        risks.append(0.3 + 0.03 * min(copies - 2, 5))
+    if r.get("score", 4) <= 2:
+        risks.append(0.05 + 0.45 * (1 - r.get("strength", 0.5)))
+    safe = 1.0
+    for x in risks:
+        safe *= 1 - x
+    return 1 - safe
+
+
 def health_score(entry_count: int, report: list) -> int:
-    """0-100 for the Vault health circle. Each login that could be safer
-    takes points off; logins you chose "Don't remind me" for don't count."""
+    """0-100 for the Vault health circle. Each login that could be safer takes
+    some points off: more for a leaked or very weak password, less for one that's
+    only a little short. Logins you chose "Don't remind me" for don't count."""
     if entry_count <= 0:
         return 100
-    weight = {"leaked": 1.0, "reused": 0.6, "weak": 0.5}
-    lost = 0.0
-    for r in report:
-        if r.get("mute"):
-            continue
-        w = weight[r["kind"]]
-        if r["kind"] == "weak" and r["score"] == 2:
-            w = 0.25
-        lost += w
-    return max(0, min(100, round(100 * (1 - lost / max(entry_count, 1)))))
+    lost = sum(login_risk(r) for r in report if not r.get("mute"))
+    return max(0, min(100, round(100 * (1 - HEALTH_EASE * lost / entry_count))))
+
+
+def health_word(score: int) -> str:
+    return "Great" if score >= 90 else ("Good" if score >= 70 else ("Fair" if score >= 50 else "Needs care"))

@@ -13,7 +13,7 @@ import unittest
 import leakcheck
 from test_sync import EMAIL, MASTER, Computer
 from test_cloud import FakeSupabase
-from vault import Vault, VaultError, health_score
+from vault import Vault, VaultError, health_score, strength_fraction
 
 
 class OrganizeTests(unittest.TestCase):
@@ -113,6 +113,36 @@ class OrganizeTests(unittest.TestCase):
             self.v.set_meta(r["id"], mute=True)
         self.assertEqual(health_score(self.v.entry_count, self.v.security_report()), 100)
 
+
+class ScoreScaleTests(unittest.TestCase):
+    """The score slides with how bad a problem is, instead of fixed steps."""
+
+    @staticmethod
+    def weak(strength, score=1):
+        return {"kind": "weak", "score": score, "strength": strength, "reused_with": [], "leaked": False}
+
+    def test_a_little_weak_costs_less_than_very_weak(self):
+        self.assertGreater(health_score(10, [self.weak(0.6, 2)]), health_score(10, [self.weak(0.1)]))
+
+    def test_more_copies_cost_more(self):
+        two = {"kind": "reused", "score": 4, "strength": 1.0, "reused_with": ["a"], "leaked": False}
+        five = dict(two, reused_with=["a", "b", "c", "d"])
+        self.assertGreater(health_score(10, [two]), health_score(10, [five]))
+
+    def test_leaked_costs_most(self):
+        leaked = {"kind": "leaked", "score": 4, "strength": 1.0, "reused_with": [], "leaked": True}
+        self.assertLess(health_score(10, [leaked]), health_score(10, [self.weak(0.0, 0)]))
+
+    def test_gentle_on_small_problems(self):
+        self.assertGreaterEqual(health_score(10, [self.weak(0.4)]), 95)
+        self.assertGreaterEqual(health_score(5, [self.weak(0.4)]), 90)
+
+    def test_strength_fraction_slides(self):
+        self.assertEqual(strength_fraction(""), 0.0)
+        self.assertLess(strength_fraction("abc"), strength_fraction("steam123"))
+        self.assertLess(strength_fraction("steam123"), strength_fraction("Summer2024!"))
+        self.assertLess(strength_fraction("aaaaaaaaaaaaaaaa1"), strength_fraction("steam123xyz"))
+        self.assertEqual(strength_fraction("m4R!9vq#Tz2wLp8Q"), 1.0)
 
 class StableScoreTests(OrganizeTests):
     def test_score_is_right_the_moment_the_vault_opens(self):

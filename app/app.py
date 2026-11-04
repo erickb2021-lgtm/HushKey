@@ -29,7 +29,7 @@ import leakcheck
 from brand import draw_logo
 from cloud import Cloud, CloudError, SessionExpired
 from vault import (MIN_MASTER_LENGTH, REMEMBER_DAYS, TamperError, Vault, VaultError,
-                   WrongPassword, check_new_master, generate_password, health_score,
+                   WrongPassword, check_new_master, generate_password, health_score, health_word,
                    looks_like_email, new_recovery_secret, new_vault_id,
                    normalize_email, password_strength)
 from version import __version__
@@ -1188,6 +1188,9 @@ def _star_pil(filled, size, dark):
     return img.resize((size, size), Image.LANCZOS)
 
 
+_shared_photos = {}
+
+
 class _Glass:
     """Drawing helpers shared by the see-through vault screen and its login list.
     Everything is drawn on a canvas, so the picture really shows through: boxes are
@@ -1220,10 +1223,16 @@ class _Glass:
         return self._fonts[k]
 
     def _photo(self, key, make):
-        if key not in self._photos:
+        # Small pictures (rounded boxes, icons, stars) are shared by every screen, so coming back
+        # to the vault doesn't draw them all again. The big background slices stay with this screen.
+        if key in _shared_photos:
+            return _shared_photos[key]
+        shared = key[0] not in ("pic", "slice") and len(_shared_photos) < 1500
+        cache = _shared_photos if shared else self._photos
+        if key not in cache:
             from PIL import ImageTk
-            self._photos[key] = ImageTk.PhotoImage(make(), master=self)
-        return self._photos[key]
+            cache[key] = ImageTk.PhotoImage(make(), master=self.winfo_toplevel())
+        return cache[key]
 
     def _rgba(self, pair, alpha=255):
         return _hex(self._c(pair)) + (alpha,)
@@ -1803,7 +1812,7 @@ class GlassMain(_Glass, ctk.CTkFrame):
         self.text(hx0 + int(10 * sc) + rz / 2, hy0 + hh / 2, str(score), 16, "bold", TEXT, anchor="center",
                   tags=tags)
         wx = hx0 + rz + int(20 * sc)
-        word = "Great" if score >= 90 else ("Good" if score >= 70 else ("Fair" if score >= 50 else "Needs care"))
+        word = health_word(score)
         n = getattr(a, "_open_tips", 0)
         self.text(wx, hy0 + 22 * sc, "Vault Health", 13, "bold", TEXT, tags=tags)
         self.text(wx, hy0 + 41 * sc, f"{word} · {score}/100", 12, "normal",
@@ -2318,7 +2327,11 @@ class HushKeyApp(ctk.CTk):
         self.listbox = None
         self.art = None
         self.glass = None
-        for w in self.body.winfo_children():
+        old = self.body.winfo_children()
+        for w in old:   # take the old screen off first, so Tk doesn't re-lay it out piece by piece
+            w.pack_forget()
+            w.place_forget()
+        for w in old:
             w.destroy()
 
     def _card(self, width=440):
@@ -3047,6 +3060,7 @@ class HushKeyApp(ctk.CTk):
     #   All / Favorites / Folders / Vault health       opens when you click a login,
     #                                                  the arrow hides it again
 
+    TIPS_PAGE = 8    # security tips built at once; "Show more" builds the next ones
     PAGE_SIZE = 50   # logins drawn at once; "Show more" draws the next 50
     BATCH = 10       # logins drawn per step, so the window never freezes
 
@@ -3071,107 +3085,16 @@ class HushKeyApp(ctk.CTk):
         self._toast_frame = None
         self._folder_form = None
         bg = self.settings.get("background", "none")
-        if bg != "none" and background_source(bg) is not None:
-            return self._show_main_glass(bg)
-
-        root = ctk.CTkFrame(self.body, fg_color="transparent", corner_radius=0)
-        root.pack(fill="both", expand=True)
-        root.grid_rowconfigure(0, weight=1)
-        root.grid_columnconfigure(2, weight=1)
-        self._layout = root
-
-        side = ctk.CTkFrame(root, fg_color=SIDE, corner_radius=0, width=236)
-        side.grid(row=0, column=0, sticky="ns")
-        side.pack_propagate(False)
-        ctk.CTkFrame(root, fg_color=BORDER, corner_radius=0, width=1).grid(row=0, column=1, sticky="ns")
-        self._build_sidebar(side)
-
-        main = ctk.CTkFrame(root, fg_color="transparent", corner_radius=0)
-        main.grid(row=0, column=2, sticky="nsew")
-        self._main = main
-        wrap = ctk.CTkFrame(main, fg_color="transparent")
-        wrap.pack(fill="both", expand=True, padx=26, pady=20)
-
-        top = ctk.CTkFrame(wrap, fg_color="transparent")
-        top.pack(fill="x")
-        self.title_lbl = ctk.CTkLabel(top, text="", font=font(22, "bold"), text_color=TEXT, anchor="w")
-        self.title_lbl.pack(side="left")
-        self.folder_tools = ctk.CTkFrame(top, fg_color="transparent", width=1, height=1)
-        self.folder_tools.pack(side="left", padx=(12, 0))
-        self.profile_btn = ctk.CTkButton(
-            top, text=f"{(self.vault.email[:1] or '?').upper()}  ▾", command=self.toggle_menu,
-            width=72, height=38, corner_radius=19, fg_color=SURFACE, hover_color=RAISED,
-            border_width=1, border_color=BORDER, text_color=TEXT, font=font(14, "bold"))
-        self.profile_btn.pack(side="right")
-        primary_button(top, "+  Add Login", self.open_add, width=128, height=38).pack(side="right", padx=(0, 10))
-
-        self.recovery_btn = None
-        sync_off = self.syncer is not None and not self.syncer.enabled and self.syncer._session is None
-        if self.cloud.configured and (not self.vault.has_recovery or sync_off):
-            banner = ctk.CTkFrame(wrap, fg_color=GOLD_SOFT, corner_radius=12, border_width=1, border_color=GOLD)
-            banner.pack(fill="x", pady=(14, 0))
-            ctk.CTkLabel(banner, text=("Turn on sync to use HushKey on all your computers"
-                                       + ("" if self.vault.has_recovery else
-                                          " and to reset your master password by email if you forget it")
-                                       + ". Only encrypted data is uploaded."),
-                         font=font(13), text_color=TEXT, anchor="w", justify="left",
-                         wraplength=520).pack(side="left", padx=16, pady=10, fill="x", expand=True)
-            self.recovery_btn = ctk.CTkButton(banner, text="Turn on", command=self.turn_on_recovery,
-                                              width=100, height=36, corner_radius=10, fg_color=GOLD,
-                                              hover_color=GOLD_HOVER, text_color=GOLD_INK,
-                                              font=font(14, "bold"))
-            self.recovery_btn.pack(side="right", padx=12)
-
-        self.search = ctk.CTkEntry(wrap, placeholder_text="Search your logins", height=42, corner_radius=12,
-                                   fg_color=SURFACE, border_color=BORDER, text_color=TEXT,
-                                   placeholder_text_color=SUBTLE, font=font(14))
-        self.search.pack(fill="x", pady=(14, 10))
-        self.search.bind("<KeyRelease>", self._search_typed)
-        self._search_job = None
-
-        tools = ctk.CTkFrame(wrap, fg_color="transparent")
-        tools.pack(fill="x", pady=(0, 8))
-        self.users_btn = ctk.CTkButton(tools, text="", command=self.toggle_usernames, height=30,
-                                       corner_radius=9, border_width=1, border_color=BORDER, font=font(12))
-        self.users_btn.pack(side="left")
-        self._style_users_btn()
-        self.density_btn = ctk.CTkSegmentedButton(
-            tools, values=["Comfortable", "Compact"], command=self.set_density, height=30, font=font(12),
-            fg_color=SURFACE, selected_color=ACCENT_SOFT, selected_hover_color=ACCENT_SOFT_HOVER,
-            unselected_color=SURFACE, unselected_hover_color=RAISED, text_color=TEXT, corner_radius=9)
-        self.density_btn.set("Compact" if self.compact else "Comfortable")
-        self.density_btn.pack(side="right")
-
-        self.art = None
-        self.listbox = ctk.CTkScrollableFrame(wrap, fg_color="transparent", corner_radius=0)
-        self.listbox.pack(fill="both", expand=True)
-
-        foot = ctk.CTkFrame(wrap, fg_color="transparent")
-        foot.pack(fill="x", pady=(8, 0))
-        self.status = ctk.CTkLabel(foot, text="Usernames and passwords stay hidden until you ask.",
-                                   font=font(12), text_color=SUBTLE, anchor="w")
-        self.status.pack(side="left", fill="x", expand=True)
-        ctk.CTkLabel(foot, text=f"v{__version__}", font=font(11), text_color=SUBTLE).pack(side="right")
-        self._update_slot = ctk.CTkFrame(foot, fg_color="transparent", width=1, height=1)
-        self._update_slot.pack(side="right", padx=(0, 8))
-        self._show_update_link()
-
-        self._panel_was_open = False
-        self.panel = ctk.CTkFrame(root, fg_color=SIDE, corner_radius=0, width=372)
-        self.panel.pack_propagate(False)
-        self.rail = ctk.CTkFrame(root, fg_color=SIDE, corner_radius=0, width=46)
-        self.rail.pack_propagate(False)
-        self._panel_line = ctk.CTkFrame(root, fg_color=BORDER, corner_radius=0, width=1)
-        ctk.CTkButton(self.rail, text="‹", width=32, height=32, corner_radius=9, command=self.open_panel,
-                      fg_color=SURFACE, hover_color=RAISED, border_width=1, border_color=BORDER,
-                      text_color=TEXT, font=font(16, "bold")).pack(pady=(20, 0))
-        self.refresh_rows()
-        self._show_sync_state()
+        if bg == "none" or background_source(bg) is None:
+            bg = "none"
+        # The vault screen is always drawn on one canvas (with or without a picture). Building it
+        # from hundreds of separate widgets made every click take a second or more.
+        return self._show_main_glass(bg)
 
     def _show_main_glass(self, bg):
-        """The vault screen with a background picture behind everything."""
+        """The vault screen, drawn on one canvas, with or without a background picture."""
         g = GlassMain(self.body, self, bg, self.settings.get("bg_dim", "medium"),
-                      self.settings.get("see_through", True))
+                      bg != "none" and self.settings.get("see_through", True))
         g.pack(fill="both", expand=True)
         self.glass = g
         self._layout = self._main = g
@@ -3400,7 +3323,7 @@ class HushKeyApp(ctk.CTk):
         self._open_tips = len(open_tips)
         if getattr(self, "health_ring", None) is not None and self.health_ring.winfo_exists():
             self.health_ring.configure(image=self._health_image(score), text=str(score))
-            word = "Great" if score >= 90 else ("Good" if score >= 70 else ("Fair" if score >= 50 else "Needs care"))
+            word = health_word(score)
             self.health_line.configure(text=f"{word} · {score}/100",
                                        text_color=(health_color(score, False), health_color(score, True)))
             n = len(open_tips)
@@ -4710,27 +4633,75 @@ class HushKeyApp(ctk.CTk):
              ("Leak check: off" if not self.settings.get("leak_check", True) else "Leak check: waiting for internet"))
         ctk.CTkLabel(top, text=when, font=font(12), text_color=SUBTLE).pack(side="right")
 
-        report = self._security_rows()
-        score = health_score(self.vault.entry_count, report)
         head = ctk.CTkFrame(c, fg_color="transparent")
         head.pack(fill="x", pady=(18, 10))
-        ctk.CTkLabel(head, text=str(score), image=self._health_image(score, 120), compound="center",
-                     font=font(34, "bold"), text_color=TEXT).pack(side="left", padx=(0, 22))
+        ring = ctk.CTkLabel(head, text="", compound="center", font=font(34, "bold"), text_color=TEXT)
+        ring.pack(side="left", padx=(0, 22))
         words = ctk.CTkFrame(head, fg_color="transparent")
         words.pack(side="left", fill="x", expand=True)
-        open_tips = [r for r in report if self._tip_visible(r, ignore_setting=True)]
         ctk.CTkLabel(words, text="Security tips", font=font(26, "bold"), text_color=TEXT, anchor="w").pack(fill="x")
-        n = len(open_tips)
-        ctk.CTkLabel(words, text=(f"Your vault is in {'great' if score >= 90 else 'good' if score >= 70 else 'okay'}"
-                                  f" shape. {n} suggestion{'s' if n != 1 else ''} could make it even safer.")
-                     if n else "Nice work! Nothing to suggest right now.", font=font(14), text_color=LABEL,
-                     anchor="w", justify="left", wraplength=520).pack(fill="x", pady=(2, 0))
+        summary = ctk.CTkLabel(words, text="", font=font(14), text_color=LABEL, anchor="w", justify="left",
+                               wraplength=520)
+        summary.pack(fill="x", pady=(2, 0))
         ctk.CTkLabel(words, text="These are suggestions, not requirements. Fix what you like and skip the rest.",
                      font=font(12), text_color=MUTED, anchor="w", justify="left", wraplength=520).pack(fill="x")
+        tips_box = ctk.CTkFrame(c, fg_color="transparent")
+        tips_box.pack(fill="x")
+        more_slot = ctk.CTkFrame(c, fg_color="transparent", width=1, height=1)
+        more_slot.pack(fill="x")
+        # Only a page of tips is built at a time: a card per tip for a big vault took seconds to draw.
+        state = {"tips": [], "rows": {}, "more": None}
 
-        for r in open_tips:
+        def update_head():
+            report = self._security_rows()
+            score = health_score(self.vault.entry_count, report)
+            state["tips"] = [r for r in report if self._tip_visible(r, ignore_setting=True)]
+            n = len(state["tips"])
+            ring.configure(text=str(score), image=self._health_image(score, 120))
+            shape = "great" if score >= 90 else ("good" if score >= 70 else "okay")
+            summary.configure(text=(f"Your vault is in {shape} shape. {n} suggestion"
+                                    f"{'s' if n != 1 else ''} could make it even safer.")
+                              if n else "Nice work! Nothing to suggest right now.")
+
+        def fill(limit, now=4):
+            # a few cards right away, the rest a few at a time, so the page shows up at once
+            if not tips_box.winfo_exists():
+                return   # left the page
+            shown, built = state["rows"], 0
+            for r in state["tips"]:
+                if len(shown) >= limit:
+                    break
+                if r["id"] in shown:
+                    continue
+                if built == now:
+                    self.after(1, lambda: fill(limit, 3))
+                    return
+                shown[r["id"]] = tip_row(r)
+                built += 1
+            if state["more"] is not None:
+                state["more"].destroy()
+                state["more"] = None
+            left = len(state["tips"]) - len(shown)
+            if left > 0:
+                step = min(left, self.TIPS_PAGE)
+                state["more"] = ghost_button(more_slot, f"Show {step} more  ({left} not shown)",
+                                             lambda: fill(len(shown) + self.TIPS_PAGE), height=40)
+                state["more"].pack(pady=(8, 4))
+            if not state["tips"] and not done.winfo_manager():
+                done.pack(fill="x", pady=6)
+
+        def act(entry_id, **meta):
+            # "Not now" / "Don't remind me" only remove that one card instead of rebuilding the page
+            self.vault.set_meta(entry_id, **meta)
+            row = state["rows"].pop(entry_id, None)
+            if row is not None:
+                row.destroy()
+            update_head()
+            fill(max(len(state["rows"]) + 1, self.TIPS_PAGE))
+
+        def tip_row(r):
             label, why = self._tip_text(r)
-            row = ctk.CTkFrame(c, fg_color=SURFACE, corner_radius=14, border_width=1, border_color=BORDER)
+            row = ctk.CTkFrame(tips_box, fg_color=SURFACE, corner_radius=14, border_width=1, border_color=BORDER)
             row.pack(fill="x", pady=4)
             img = brand_image(r["icon"], 24)
             ctk.CTkLabel(row, text="" if img else (r["title"][:1] or "?").upper(), image=img, width=42, height=42,
@@ -4747,21 +4718,22 @@ class HushKeyApp(ctk.CTk):
             ctk.CTkLabel(t, text=why, font=font(12), text_color=MUTED, anchor="w", justify="left",
                          wraplength=380).pack(fill="x")
             for text, cmd, main_btn, w in (("Fix", lambda i=r["id"]: self.open_edit(i, fresh=True), True, 64),
-                                        ("Not now", lambda i=r["id"]: self._sec_act(self.vault.set_meta, i,
-                                         snooze=time.time() + TIP_SNOOZE_DAYS * 86400), False, 70),
-                                        ("Don't remind me", lambda i=r["id"]: self._sec_act(
-                                            self.vault.set_meta, i, mute=True), False, 124)):
+                                           ("Not now", lambda i=r["id"]: act(
+                                               i, snooze=time.time() + TIP_SNOOZE_DAYS * 86400), False, 70),
+                                           ("Don't remind me", lambda i=r["id"]: act(i, mute=True), False, 124)):
                 ctk.CTkButton(row, text=text, command=cmd, height=34, width=w, corner_radius=9,
                               fg_color="transparent", hover_color=ACCENT_SOFT if main_btn else RAISED,
                               border_width=1 if main_btn else 0, border_color=ACCENT,
                               text_color=ACCENT if main_btn else SUBTLE,
                               font=font(13, "bold" if main_btn else "normal")).pack(side="left", padx=(0, 8))
-        if not open_tips:
-            done = ctk.CTkFrame(c, fg_color=ACCENT_SOFT, corner_radius=14)
-            done.pack(fill="x", pady=6)
-            ctk.CTkLabel(done, text="You're all caught up", font=font(16, "bold"), text_color=ACCENT).pack(pady=(18, 2))
-            ctk.CTkLabel(done, text="HushKey will let you know if anything new comes up.", font=font(12),
-                         text_color=MUTED).pack(pady=(0, 18))
+            return row
+
+        done = ctk.CTkFrame(more_slot, fg_color=ACCENT_SOFT, corner_radius=14)
+        ctk.CTkLabel(done, text="You're all caught up", font=font(16, "bold"), text_color=ACCENT).pack(pady=(18, 2))
+        ctk.CTkLabel(done, text="HushKey will let you know if anything new comes up.", font=font(12),
+                     text_color=MUTED).pack(pady=(0, 18))
+        update_head()
+        fill(self.TIPS_PAGE)
 
         how = ctk.CTkFrame(c, fg_color="transparent", width=1, height=1)
         how.pack(fill="x", pady=(14, 0))
@@ -4787,10 +4759,6 @@ class HushKeyApp(ctk.CTk):
         self.status = ctk.CTkLabel(c, text="", font=font(12), text_color=MUTED, anchor="w")
         self.status.pack(fill="x", pady=(12, 0))
         self.start_leak_check()
-
-    def _sec_act(self, func, entry_id, **kw):
-        func(entry_id, **kw)
-        self.show_security()
 
     def _leave_security(self):
         self._on_security = False
@@ -5762,11 +5730,11 @@ def selftest() -> int:
         lambda: v.add("Riot main", "summoner99", "hunter2!", "riotgames") and app.refresh_rows(),
         lambda: v.add("My bank", "me", "pw12345!") and app.refresh_rows(),
         lambda: app.select(app.vault.list_titles()[0][0]),
-        lambda: require(app.panel.winfo_ismapped(), "clicking a login opens the details panel"),
+        lambda: require(app.glass._panel_box[4], "clicking a login opens the details panel"),
         lambda: [w[1].invoke() for w in app._secret_widgets.values()],
         lambda: app.copy(app.vault.list_titles()[0][0], 1),
         lambda: app.close_panel(),
-        lambda: require(app.rail.winfo_ismapped(), "the arrow hides the panel"),
+        lambda: require(not app.glass._panel_box[4], "the arrow hides the panel"),
         lambda: app.open_panel(),
         lambda: app.toggle_fav(app.vault.list_titles()[0][0]),
         lambda: app.set_view("favorites"),
@@ -5818,7 +5786,8 @@ def selftest() -> int:
         lambda: app.toggle_theme(),
         lambda: app.settings.update(background="none", see_through=False),
         lambda: app.show_main(),
-        lambda: require(app.art is None, "plain list without a background"),
+        lambda: require(app.glass is not None and not app.glass.see and app.glass.picture() is None,
+                        "without a background the vault uses the fast canvas screen, with solid boxes"),
         lambda: app.open_add(),
         lambda: dialog().generate(),
         lambda: dialog().logo.toggle(),
