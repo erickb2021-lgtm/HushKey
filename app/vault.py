@@ -217,12 +217,82 @@ def new_vault_id() -> str:
 REMEMBER_DAYS = 30
 
 
+def _machine_id() -> str:
+    """The ID the operating system keeps for this computer. It stays the same after a
+    restart (the network card's address doesn't always: on some PCs Python can't read it
+    and makes up a new one every time HushKey starts, which made "Remember this device"
+    forget the computer)."""
+    try:
+        if os.name == "nt":
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography", 0,
+                                winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
+                value = str(winreg.QueryValueEx(k, "MachineGuid")[0]).strip()
+                if value:
+                    return value
+        elif sys.platform == "darwin":
+            import re
+            import subprocess
+            out = subprocess.run(["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"], capture_output=True,
+                                 text=True, timeout=5).stdout
+            m = re.search(r'"IOPlatformUUID" = "([^"]+)"', out)
+            if m:
+                return m.group(1)
+        else:
+            for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+                if os.path.isfile(path):
+                    with open(path, encoding="ascii", errors="ignore") as f:
+                        value = f.read().strip()
+                    if value:
+                        return value
+    except Exception:
+        pass
+    # last resort: a random ID made once and kept with the vaults on this computer
+    path = os.path.join(default_data_dir(), "computer.id")
+    try:
+        with open(path, encoding="ascii") as f:
+            value = f.read().strip()
+        if value:
+            return value
+    except OSError:
+        pass
+    value = secrets.token_hex(16)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="ascii") as f:
+            f.write(value)
+    except OSError:
+        pass
+    return value
+
+
+_device_ids = {}
+
+
 def device_id() -> str:
     """A fingerprint of this computer + user account (hashed, so it reveals
     nothing). If the vault file is copied to another computer, the
     fingerprint won't match and HushKey asks for an email code again."""
-    raw = f"{uuid.getnode()}|{platform.node()}|{getpass.getuser()}|{sys.platform}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+    if "now" not in _device_ids:
+        raw = f"hushkey-device|{_machine_id()}|{getpass.getuser()}|{sys.platform}"
+        _device_ids["now"] = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+    return _device_ids["now"]
+
+
+def legacy_device_id():
+    """The fingerprint older versions used (based on the network card's address). Still
+    accepted when that address is real, so computers they remembered stay remembered.
+    None when Python had to make the address up (it changes every launch)."""
+    if "old" not in _device_ids:
+        node = uuid.getnode()
+        made_up = (node >> 40) & 1   # Python sets this bit when it couldn't read a real address
+        raw = f"{node}|{platform.node()}|{getpass.getuser()}|{sys.platform}"
+        _device_ids["old"] = None if made_up else hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+    return _device_ids["old"]
+
+
+def is_this_device(fingerprint) -> bool:
+    return bool(fingerprint) and fingerprint in (device_id(), legacy_device_id())
 
 
 def generate_password(length: int = 18, symbols: bool = True) -> str:
@@ -505,19 +575,25 @@ class Vault:
 
     def is_device_remembered(self) -> bool:
         self._require_unlocked()
-        until = self._data.get("devices", {}).get(device_id(), 0)
-        return isinstance(until, (int, float)) and until > time.time()
+        devices = self._data.get("devices", {})
+        until = max([v for k, v in devices.items() if is_this_device(k) and isinstance(v, (int, float))] or [0])
+        return until > time.time()
 
     def remember_device(self, days: int = REMEMBER_DAYS) -> None:
         self._require_unlocked()
-        devices = {k: v for k, v in self._data.get("devices", {}).items() if v > time.time()}
+        devices = {k: v for k, v in self._data.get("devices", {}).items()
+                   if v > time.time() and not is_this_device(k)}
         devices[device_id()] = int(time.time() + days * 86400)
         self._data["devices"] = devices
         self._save()
 
     def forget_device(self) -> None:
         self._require_unlocked()
-        changed = self._data.get("devices", {}).pop(device_id(), None) is not None
+        devices = self._data.get("devices", {})
+        changed = False
+        for k in [k for k in devices if is_this_device(k)]:
+            devices.pop(k)
+            changed = True
         changed = self._data.pop("auto_signin", None) is not None or changed
         if changed:
             self._save()
@@ -550,14 +626,14 @@ class Vault:
         """When stay-signed-in ends (0 = off)."""
         data = self._data if self._data is not None else self._read_file()
         info = data.get("auto_signin") or {}
-        return int(info.get("until", 0)) if info.get("device") == device_id() else 0
+        return int(info.get("until", 0)) if is_this_device(info.get("device")) else 0
 
     def unlock_with_device_key(self, device_key: bytes) -> None:
         """Open the vault without the master password, only on the same
         computer, within the 30 days, and only if the file wasn't tampered with."""
         data = self._read_file()
         info = data.get("auto_signin")
-        if not info or info.get("device") != device_id():
+        if not info or not is_this_device(info.get("device")):
             raise VaultError("This computer isn't remembered. Please sign in.")
         if int(info.get("until", 0)) <= time.time():
             raise VaultError("It's been 30 days, so for your safety please sign in again.")
@@ -567,6 +643,13 @@ class Vault:
         except (InvalidToken, KeyError, AttributeError):
             raise VaultError("This computer isn't remembered anymore. Please sign in.")
         self._open_with_key(data, vault_key)
+        if info.get("device") != device_id():
+            # remembered by an older version: switch it to the fingerprint that survives restarts
+            self._data["auto_signin"] = dict(info, device=device_id())
+            devices = self._data.get("devices", {})
+            for k in [k for k in devices if k != device_id() and is_this_device(k)]:
+                devices[device_id()] = max(devices.pop(k), devices.get(device_id(), 0))
+            self._save()
 
     def _find(self, entry_id: str) -> dict:
         for e in self._data["entries"]:

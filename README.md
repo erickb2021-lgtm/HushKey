@@ -5,12 +5,12 @@
 <p align="center">A simple, private password manager for <b>Windows and Mac</b>.<br>Your logins are encrypted on your computer, and only you can open them.</p>
 
 <p align="center">
-  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.14 for Windows" src="https://img.shields.io/badge/Download_v2.0.14_for-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI0ZGRkZGRiIgZD0iTTAgMGgxMS4zNzd2MTEuMzcySDBabTEyLjYyMyAwSDI0djExLjM3MkgxMi42MjNaTTAgMTIuNjIzaDExLjM3N1YyNEgwWm0xMi42MjMgMEgyNFYyNEgxMi42MjNaIi8%2BPC9zdmc%2B&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.17 for Windows" src="https://img.shields.io/badge/Download_v2.0.17_for-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI0ZGRkZGRiIgZD0iTTAgMGgxMS4zNzd2MTEuMzcySDBabTEyLjYyMyAwSDI0djExLjM3MkgxMi42MjNaTTAgMTIuNjIzaDExLjM3N1YyNEgwWm0xMi42MjMgMEgyNFYyNEgxMi42MjNaIi8%2BPC9zdmc%2B&logoColor=white" height="44"></a>
   &nbsp;&nbsp;
-  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.14 for Mac" src="https://img.shields.io/badge/Download_v2.0.14_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.17 for Mac" src="https://img.shields.io/badge/Download_v2.0.17_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
 </p>
 
-<p align="center"><b>Latest version: v2.0.14</b> · <a href="../../releases">All releases</a></p>
+<p align="center"><b>Latest version: v2.0.17</b> · <a href="../../releases">All releases</a></p>
 
 ## Download
 
@@ -81,6 +81,18 @@ HushKey is built with users first. Your privacy matters more than any feature.
 - The Mac app needs Apple Silicon (M1 or newer).
 
 ## What's new
+
+### v2.0.17
+
+**Fixed**
+- **Remember this device** now keeps working after you shut down or restart your computer. Before, some PCs were forgotten after every restart and sent you back to the sign-in page. After updating, sign in once more with Remember this device on, and HushKey will remember you from then on.
+
+**New in v2.0.15 and v2.0.16**
+- **Smoother app:** moving between the vault, Settings and other screens is faster, even with many passwords.
+- **Gentler vault score** that moves in small steps instead of jumps of 10.
+- **Updates show up while HushKey is open:** no need to close and reopen it.
+- **Settings button:** a gear at the top right replaces the letter menu.
+- **Box opacity slider** in Settings › Appearance: solid by default, or as see-through as you like. The preview also shows Comfortable and Compact.
 
 ### v2.0.14
 
