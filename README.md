@@ -5,12 +5,12 @@
 <p align="center">A simple, private password manager for <b>Windows and Mac</b>.<br>Your logins are encrypted on your computer, and only you can open them.</p>
 
 <p align="center">
-  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.17 for Windows" src="https://img.shields.io/badge/Download_v2.0.17_for-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI0ZGRkZGRiIgZD0iTTAgMGgxMS4zNzd2MTEuMzcySDBabTEyLjYyMyAwSDI0djExLjM3MkgxMi42MjNaTTAgMTIuNjIzaDExLjM3N1YyNEgwWm0xMi42MjMgMEgyNFYyNEgxMi42MjNaIi8%2BPC9zdmc%2B&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Windows.exe"><img alt="Download HushKey v2.0.18 for Windows" src="https://img.shields.io/badge/Download_v2.0.18_for-Windows-0078D4?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI0ZGRkZGRiIgZD0iTTAgMGgxMS4zNzd2MTEuMzcySDBabTEyLjYyMyAwSDI0djExLjM3MkgxMi42MjNaTTAgMTIuNjIzaDExLjM3N1YyNEgwWm0xMi42MjMgMEgyNFYyNEgxMi42MjNaIi8%2BPC9zdmc%2B&logoColor=white" height="44"></a>
   &nbsp;&nbsp;
-  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.17 for Mac" src="https://img.shields.io/badge/Download_v2.0.17_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
+  <a href="../../releases/latest/download/HushKey-Mac.zip"><img alt="Download HushKey v2.0.18 for Mac" src="https://img.shields.io/badge/Download_v2.0.18_for-Mac-B07D12?style=for-the-badge&logo=apple&logoColor=white" height="44"></a>
 </p>
 
-<p align="center"><b>Latest version: v2.0.17</b> · <a href="../../releases">All releases</a></p>
+<p align="center"><b>Latest version: v2.0.18</b> · <a href="../../releases">All releases</a></p>
 
 ## Download
 
@@ -81,6 +81,17 @@ HushKey is built with users first. Your privacy matters more than any feature.
 - The Mac app needs Apple Silicon (M1 or newer).
 
 ## What's new
+
+### v2.0.18
+
+**New**
+- **Amazon logo:** pick it for your Amazon, Prime Video, Amazon Music or AWS logins (search "amazon").
+- **Logo categories:** the logo menu now has Popular plus Shopping, Banks & money, Airlines & travel, Food & delivery, Cars & dealerships, Streaming & music, Gaming services and Video games. Click a category to open it.
+- **New icons:** Airline, Hotel, Car, Credit card, Streaming TV, Groceries and Video game.
+- **Over 1,000 more names you can search**, including banks (Capital One, Citi, US Bank, Ally, SoFi, Navy Federal...), airlines (Alaska, Spirit, Frontier, WestJet, Cathay Pacific...), restaurants and grocery stores, car brands and dealerships (Mercedes, Lexus, Carvana, CarMax...), streaming (Hulu, Disney+, Peacock, ESPN+...), gaming services (Xbox, Nintendo, Game Pass...) and games (Minecraft, Call of Duty, Elden Ring, GTA...). Brands without their own logo get the matching icon.
+
+**Fixed**
+- Searching for a logo after scrolling down the menu could show an empty list.
 
 ### v2.0.17
 

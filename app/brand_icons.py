@@ -44,7 +44,7 @@ EVERYDAY = [
     ["hk-email", "Email", "6CB6FF", "M2 5h20v14H2ZM4 7v.5l8 5.5 8-5.5V7l-8 5.5Z",
      ["email", "mail", "inbox", "outlook", "yahoo", "hotmail", "aol"]],
     ["hk-shopping", "Shopping", "FF9F5A", "M5 7h14l-1 15H6ZM9 7V6a3 3 0 0 1 6 0v1h-2V6a1 1 0 0 0-2 0v1Z",
-     ["shopping", "shop", "store", "amazon", "walmart", "costco", "best buy", "shein", "temu", "home depot",
+     ["shopping", "shop", "store", "walmart", "costco", "best buy", "shein", "temu", "home depot",
       "lowes", "sephora", "ulta", "macys", "kohls", "hm", "h&m", "gap", "old navy", "dollar general"]],
     ["hk-chat", "Chat", "B18CFF",
      "M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z",
@@ -53,7 +53,7 @@ EVERYDAY = [
      ["music", "songs", "audio", "soundcloud", "pandora", "apple music"]],
     ["hk-video", "Video", "FF6B6B",
      "M3 4h18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM10 8.5v7l6-3.5Z",
-     ["video", "movies", "tv", "streaming", "hulu", "disney", "prime video", "peacock"]],
+     ["video", "movies", "clips", "video editor"]],
     ["hk-cloud", "Cloud", "8FD3FF",
      "M7 19a5 5 0 0 1-.6-10A7 7 0 0 1 19.6 9.5 4.8 4.8 0 0 1 18 19Z",
      ["cloud", "storage", "backup", "onedrive", "box"]],
@@ -101,7 +101,47 @@ EVERYDAY = [
      "M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2ZM7 5v13h10V5Z",
      ["phone", "mobile", "carrier", "verizon", "att", "t-mobile", "sim"]],
 ]
+# added in v2.0.18: Amazon (its logo isn't in Simple Icons, so HushKey draws its own) and icons
+# for airlines, cars, cards, streaming, groceries, hotels and video games
+EVERYDAY += [
+    ["hk-amazon", "Amazon", "FF9900",
+     "M6 2.5h12v7.5H6ZM10.5 2.5v3h3v-3ZM2.9 12.2Q10.5 18.6 17.3 15L18 16.6Q10.5 20.5 2 13.6ZM16.2 13.6 22 13 19.6 18.6Z",
+     []],
+    ["hk-plane", "Airline", "6CB6FF",
+     "M12 1.5c.9 0 1.5 1 1.5 2.5v5l8 4.5v2l-8-2.5v5l2.5 2V22L12 21l-3.5 1v-2l2.5-2v-5l-8 2.5v-2l8-4.5V4c0-1.5.6-2.5 1.5-2.5Z",
+     []],
+    ["hk-car", "Car", "FF6B6B",
+     "M5 11l1.6-4.6A2 2 0 0 1 8.5 5h7a2 2 0 0 1 1.9 1.4L19 11a2 2 0 0 1 2 2v4h-2v2h-3v-2H8v2H5v-2H3v-4a2 2 0 0 1 2-2ZM7.2 11h9.6l-1.2-3.6a.6.6 0 0 0-.6-.4H9a.6.6 0 0 0-.6.4ZM5 13.6a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0ZM16.4 13.6a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0Z",
+     []],
+    ["hk-card", "Credit card", "8FD3FF",
+     "M3 4h18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM1 8v3h22V8ZM4 14.5h6v2H4Z",
+     []],
+    ["hk-tv", "Streaming TV", "B18CFF",
+     "M3 3h18a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM3.2 5.2v10.6h17.6V5.2ZM10 7.5v6l5-3ZM7 20h10v2H7Z",
+     []],
+    ["hk-cart", "Groceries", "3DDC97",
+     "M1 3h3.6l3 12H19v2H6L3 5H1ZM7 6h15l-2.2 7H8.7ZM6.8 19.6a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0-3.6 0ZM15.4 19.6a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0-3.6 0Z",
+     []],
+    ["hk-hotel", "Hotel", "F2C14E",
+     "M2 4h2v8h18v8h-2v-2H4v2H2ZM5.5 9a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0-4.4 0ZM11 7.5h8a3 3 0 0 1 3 3V11H11Z",
+     []],
+    ["hk-sword", "Video game", "FF6FA8",
+     "M11 1h2l1.2 2.2V14h-4.4V3.2ZM6 14.2h12v2.2H6ZM11 16.6h2v3.8h-2ZM10.4 22a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0-3.2 0Z",
+     []],
+]
 _EVERYDAY_SLUGS = {e[0] for e in EVERYDAY}
+NONZERO = {"hk-amazon"}   # drawn as overlapping pieces, so no holes
+
+
+def _add_names():
+    """Brand names without a shared logo: typing one offers the closest everyday icon
+    (e.g. "Capital One" -> Bank, "Hulu" -> Streaming TV, "Elden Ring" -> Video game)."""
+    from brand_names import MORE_NAMES
+    for e in EVERYDAY:
+        e[4] = list(dict.fromkeys(e[4] + MORE_NAMES.get(e[0], [])))
+
+
+_add_names()
 
 # The best-known apps, banks, streaming services, games, stores and
 # restaurants, most popular first. This is what the dropdown shows before you
@@ -126,6 +166,52 @@ TOP_50 = ["google", "youtube", "gmail", "apple", "icloud", "instagram", "faceboo
           "southwestairlines", "americanairlines", "marriott", "hilton", "notion", "figma", "protonmail",
           "samsung", "wordpress", "claude", "pubg", "counterstrike"]
 TOP = TOP_50   # kept under both names
+
+# The logo menu's categories, shown under "Popular" before you type. Each brand
+# shows once; any without a logo in this copy are skipped.
+CATEGORIES = [
+    ("Shopping", ["hk-amazon", "hk-shopping", "ebay", "target", "etsy", "shopify", "aliexpress", "temu", "shein",
+                  "ikea", "nike", "adidas", "newbalance", "puma", "underarmour", "zara", "handm", "uniqlo",
+                  "macys", "zalando", "stockx", "vinted", "wish", "newegg", "rakuten", "shopee", "taobao",
+                  "kaufland", "otto", "groupon", "honey", "dell", "hp", "lenovo", "samsung", "apple"]),
+    ("Banks & money", ["hk-bank", "hk-card", "hk-money", "chase", "bankofamerica", "wellsfargo",
+                       "americanexpress", "discover", "hsbc", "barclays", "goldmansachs", "deutschebank",
+                       "commerzbank", "sparkasse", "revolut", "monzo", "n26", "starlingbank", "bunq", "nubank",
+                       "hdfcbank", "icicibank", "paypal", "venmo", "cashapp", "zelle", "applepay", "googlepay",
+                       "samsungpay", "visa", "mastercard", "klarna", "afterpay", "wise", "stripe", "robinhood",
+                       "coinbase", "binance", "mercadopago", "paytm", "phonepe"]),
+    ("Airlines & travel", ["hk-plane", "hk-hotel", "delta", "unitedairlines", "americanairlines",
+                           "southwestairlines", "jetblue", "aircanada", "britishairways", "lufthansa", "airfrance",
+                           "klm", "emirates", "qatarairways", "etihadairways", "turkishairlines",
+                           "singaporeairlines", "qantas", "japanairlines", "ana", "ryanair", "easyjet", "wizzair",
+                           "norwegian", "iberia", "aeromexico", "avianca", "copaairlines", "virginatlantic",
+                           "airasia", "airindia", "indigo", "airchina", "chinaeasternairlines",
+                           "chinasouthernairlines", "airbnb", "bookingdotcom", "expedia", "hotelsdotcom",
+                           "tripadvisor", "trivago", "marriott", "hilton", "uber", "lyft", "grab", "waze",
+                           "googlemaps", "sncf", "deutschebahn"]),
+    ("Food & delivery", ["hk-food", "hk-pizza", "hk-burger", "hk-coffee", "hk-cart", "mcdonalds", "starbucks",
+                         "burgerking", "kfc", "tacobell", "doordash", "ubereats", "instacart", "postmates",
+                         "deliveroo", "justeat", "glovo", "foodpanda", "zomato", "swiggy", "hellofresh", "yelp",
+                         "samsclub", "lidl", "aldinord", "aldisud", "tesco", "iceland"]),
+    ("Cars & dealerships", ["hk-car", "toyota", "ford", "chevrolet", "honda", "nissan", "hyundai", "kia",
+                            "tesla", "jeep", "ram", "chrysler", "cadillac", "generalmotors", "subaru", "mazda",
+                            "volkswagen", "bmw", "audi", "porsche", "volvo", "acura", "infiniti", "mini",
+                            "mitsubishi", "suzuki", "fiat", "polestar", "lucid", "peugeot", "renault", "citroen",
+                            "opel", "skoda", "seat", "dacia", "ferrari", "lamborghini", "maserati", "bentley",
+                            "rollsroyce", "astonmartin", "mclaren", "bugatti", "shell"]),
+    ("Streaming & music", ["hk-tv", "hk-music", "netflix", "max", "hbomax", "hbo", "paramountplus", "appletv",
+                           "youtube", "youtubetv", "crunchyroll", "tubi", "roku", "starz", "showtime", "mubi",
+                           "plex", "dazn", "twitch", "kick", "vimeo", "spotify", "applemusic", "youtubemusic",
+                           "tidal", "deezer", "pandora", "soundcloud", "audible", "iheartradio", "shazam",
+                           "bandcamp", "audiomack", "napster", "lastdotfm", "applepodcasts", "pocketcasts",
+                           "jellyfin", "emby", "kodi"]),
+    ("Gaming services", ["hk-controller", "steam", "epicgames", "playstation", "battledotnet", "ea", "origin",
+                         "ubisoft", "gogdotcom", "itchdotio", "humblebundle", "riotgames", "rockstargames",
+                         "activision", "valve", "roblox", "discord", "nvidia", "amd", "razer", "curseforge",
+                         "modrinth", "faceit", "mihoyo", "unity", "unrealengine"]),
+    ("Video games", ["hk-sword", "fortnite", "leagueoflegends", "valorant", "counterstrike", "dota2", "pubg",
+                     "rust", "fifa", "thefinals", "chessdotcom", "lichess", "osu"]),
+]
 _TOP_RANK = {slug: i for i, slug in enumerate(TOP_50)}
 POPULAR = TOP_50
 
@@ -170,8 +256,15 @@ def sections():
 
     def pick(slugs):
         return [(s, _by_slug[s][1]) for s in slugs if s in _by_slug]
-    return [("Top apps & games", pick(TOP_50)),
-            ("Everyday icons", pick([e[0] for e in EVERYDAY]))]
+    seen = set(TOP_50[:50])
+    out = [("Popular", pick(TOP_50[:50]))]
+    for title, slugs in CATEGORIES:
+        mine = [s for s in slugs if s not in seen]
+        seen.update(mine)
+        out.append((title, pick(mine)))
+    rest = [s for s in TOP_50 if s not in seen] + [e[0] for e in EVERYDAY if e[0] not in seen]
+    out.append(("More apps & icons", pick(rest)))
+    return out
 
 
 # ---- a login's own picture ------------------------------------------------
@@ -538,7 +631,7 @@ def render(slug: str, size: int = 64, light: bool = False):
         return None
     ss = 4  # draw 4x bigger, then shrink, for smooth edges
     big = size * ss
-    mask = _fill_nonzero(path_to_polygons(item[3]), big, big / 24.0, evenodd=slug in _EVERYDAY_SLUGS)
+    mask = _fill_nonzero(path_to_polygons(item[3]), big, big / 24.0, evenodd=slug in _EVERYDAY_SLUGS and slug not in NONZERO)
     mask = mask.resize((size, size), Image.BOX)
     img = Image.new("RGBA", (size, size), _readable_color(item[2], light) + (0,))
     img.putalpha(mask)

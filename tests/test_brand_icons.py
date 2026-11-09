@@ -40,9 +40,34 @@ class BrandIconTests(unittest.TestCase):
         self.assertEqual(brand_icons.search("")[0][0], "google")
 
     def test_top_apps_all_available(self):
-        top = brand_icons.sections()[0]
-        self.assertEqual(top[0], "Top apps & games")
-        self.assertEqual(len(top[1]), 125)      # the first 50 + 75 added in v2.0.11
+        sections = brand_icons.sections()
+        self.assertEqual(sections[0][0], "Popular")
+        self.assertEqual(len(sections[0][1]), 50)
+        shown = [slug for _, items in sections for slug, _ in items]
+        self.assertEqual(len(shown), len(set(shown)), "each logo shows in one category only")
+        for slug in brand_icons.TOP_50:          # the 125 top apps are all still in the menu
+            self.assertIn(slug, shown)
+        titles = [t for t, _ in sections]
+        for t in ("Shopping", "Banks & money", "Airlines & travel", "Food & delivery", "Cars & dealerships",
+                  "Streaming & music", "Gaming services", "Video games"):
+            self.assertIn(t, titles)
+            self.assertGreater(len(dict(sections)[t]), 5, t)
+
+    def test_amazon_and_new_categories(self):
+        cases = {"Amazon": "hk-amazon", "Amazon Prime": "hk-amazon", "Capital One": "hk-bank",
+                 "Citibank": "hk-bank", "Spirit Airlines": "hk-plane", "Delta": "delta", "Hulu": "hk-tv",
+                 "Disney+": "hk-tv", "Netflix": "netflix", "Mercedes": "hk-car", "Carvana": "hk-car",
+                 "Toyota": "toyota", "Kroger": "hk-cart", "Xbox": "hk-controller",
+                 "Elden Ring": "hk-sword", "Minecraft": "hk-sword", "Hilton": "hilton", "Hyatt": "hk-hotel",
+                 "Chase": "chase", "Wendys": "hk-burger"}
+        for name, slug in cases.items():
+            self.assertEqual(brand_icons.suggest(name), slug, name)
+
+    def test_new_icons_draw_solid(self):
+        for slug in ("hk-amazon", "hk-plane", "hk-car", "hk-card", "hk-tv", "hk-cart", "hk-hotel", "hk-sword"):
+            img = brand_icons.render(slug, 48)
+            self.assertIsNotNone(img, slug)
+            self.assertGreater(sum(img.getchannel("A").histogram()[129:]), 300, slug)
 
     def test_restaurants(self):
         self.assertEqual(brand_icons.suggest("McDonalds"), "mcdonalds")

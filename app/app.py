@@ -681,7 +681,7 @@ class StrengthBar(ctk.CTkFrame):
 
 class LogoPicker(ctk.CTkFrame):
     """'Choose a logo for this login'. Type to search, or click the arrow to
-    browse the top apps & games and HushKey's everyday icons.
+    browse popular apps and categories (banks, airlines, food, cars, streaming, games...).
 
     The list FLOATS on top of the form, like a dropdown on a website, so the
     pop-up window never has to grow (CustomTkinter pop-ups can't always grow,
@@ -760,8 +760,8 @@ class LogoPicker(ctk.CTkFrame):
             return ""
         return q
 
-    def _option(self, slug, name):
-        ctk.CTkButton(self.results, text="  " + name, image=brand_image(slug, 24), compound="left",
+    def _option(self, slug, name, parent=None):
+        ctk.CTkButton(parent or self.results, text="  " + name, image=brand_image(slug, 24), compound="left",
                       anchor="w", height=38, corner_radius=8,
                       fg_color=ACCENT_SOFT if slug == self.slug else "transparent",
                       hover_color=BORDER, text_color=TEXT, font=font(14),
@@ -786,11 +786,50 @@ class LogoPicker(ctk.CTkFrame):
                                                 "click “Use my own picture…” below.",
                              font=font(13), text_color=SUBTLE, justify="left").pack(padx=10, pady=8, anchor="w")
         else:
-            for title, items in brand_icons.sections():
-                self._heading(title)
-                for slug, name in items:
-                    self._option(slug, name)
+            self._sections = {}
+            for n, (title, items) in enumerate(brand_icons.sections()):
+                if not items:
+                    continue
+                if n == 0:   # "Popular" is always open
+                    self._heading(title)
+                    for slug, name in items:
+                        self._option(slug, name)
+                    continue
+                # the categories open when clicked, and their logos are only drawn then, so the list stays quick
+                box = ctk.CTkFrame(self.results, fg_color="transparent")
+                box.pack(fill="x")
+                head = ctk.CTkButton(box, text="", anchor="w", height=34, corner_radius=8, fg_color="transparent",
+                                     hover_color=BORDER, text_color=ACCENT, font=font(12, "bold"),
+                                     command=lambda t=title: self.toggle_section(t))
+                head.pack(fill="x", padx=4, pady=(6, 0))
+                self._sections[title] = {"box": box, "head": head, "items": items, "body": None, "open": False}
+                self._paint_section(title)
+                if self.slug and any(slug == self.slug for slug, _ in items):
+                    self.toggle_section(title)   # show where the chosen logo is
         self._shown_query = query
+        try:   # new results start at the top (not wherever the last list was scrolled to)
+            self.results._parent_canvas.yview_moveto(0)
+        except Exception:
+            pass
+
+    def _paint_section(self, title):
+        sec = self._sections[title]
+        sec["head"].configure(text=f"{'▾' if sec['open'] else '▸'}  {title.upper()}  ({len(sec['items'])})")
+
+    def toggle_section(self, title):
+        sec = getattr(self, "_sections", {}).get(title)
+        if sec is None:
+            return
+        if sec["body"] is None:
+            sec["body"] = ctk.CTkFrame(sec["box"], fg_color="transparent")
+            for slug, name in sec["items"]:
+                self._option(slug, name, parent=sec["body"])
+        sec["open"] = not sec["open"]
+        if sec["open"]:
+            sec["body"].pack(fill="x")
+        else:
+            sec["body"].pack_forget()
+        self._paint_section(title)
 
     def show_results(self):
         try:
@@ -6054,9 +6093,16 @@ def selftest() -> int:
         lambda: app.open_add(),
         lambda: dialog().generate(),
         lambda: dialog().logo.toggle(),
-        lambda: require(dialog().logo.open and len(dialog().logo.results.winfo_children()) > 60
+        lambda: require(dialog().logo.open and len(dialog().logo.results.winfo_children()) > 50
                         and "Couldn't" not in str(dialog().logo.note.cget("text")),
-                        "logo dropdown opens with the top apps + everyday icons"),
+                        "logo dropdown opens with the popular apps"),
+        lambda: require(len(dialog().logo._sections) >= 8 and all(not v["open"] and v["body"] is None
+                                                                  for v in dialog().logo._sections.values()),
+                        "logo categories start closed and aren't drawn yet"),
+        lambda: dialog().logo.toggle_section("Banks & money"),
+        lambda: require(dialog().logo._sections["Banks & money"]["open"]
+                        and len(dialog().logo._sections["Banks & money"]["body"].winfo_children()) > 20,
+                        "clicking a category shows its logos"),
         lambda: require(dialog()._escape() == "break" and not dialog().logo.open, "Escape closes the list"),
         lambda: (dialog().logo.search.insert(0, "riot"), dialog().logo.show_results()),
         lambda: require(dialog().logo.open, "typing opens the list"),
