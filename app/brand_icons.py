@@ -101,7 +101,7 @@ EVERYDAY = [
      "M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2ZM7 5v13h10V5Z",
      ["phone", "mobile", "carrier", "verizon", "att", "t-mobile", "sim"]],
 ]
-# added in v2.0.18: Amazon (its logo isn't in Simple Icons, so HushKey draws its own) and icons
+# added in v2.0.19: Amazon (its logo isn't in Simple Icons, so HushKey draws its own) and icons
 # for airlines, cars, cards, streaming, groceries, hotels and video games
 EVERYDAY += [
     ["hk-amazon", "Amazon", "FF9900",
