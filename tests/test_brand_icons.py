@@ -49,22 +49,29 @@ class BrandIconTests(unittest.TestCase):
             self.assertIn(slug, shown)
         titles = [t for t, _ in sections]
         for t in ("Shopping", "Banks & money", "Airlines & travel", "Food & delivery", "Cars & dealerships",
-                  "Streaming & music", "Gaming services", "Video games"):
+                  "Streaming & music", "Phone, internet & bills", "Gaming services", "Video games"):
             self.assertIn(t, titles)
             self.assertGreater(len(dict(sections)[t]), 5, t)
 
     def test_amazon_and_new_categories(self):
-        cases = {"Amazon": "hk-amazon", "Amazon Prime": "hk-amazon", "Capital One": "hk-bank",
-                 "Citibank": "hk-bank", "Spirit Airlines": "hk-plane", "Delta": "delta", "Hulu": "hk-tv",
-                 "Disney+": "hk-tv", "Netflix": "netflix", "Mercedes": "hk-car", "Carvana": "hk-car",
-                 "Toyota": "toyota", "Kroger": "hk-cart", "Xbox": "hk-controller",
-                 "Elden Ring": "hk-sword", "Minecraft": "hk-sword", "Hilton": "hilton", "Hyatt": "hk-hotel",
-                 "Chase": "chase", "Wendys": "hk-burger"}
+        cases = {"Amazon": "hk-amazon", "Amazon Prime": "hk-amazon", "Capital One": "hk-bank/capitalone",
+                 "Citibank": "hk-bank/citi", "Spirit Airlines": "hk-plane/spiritairlines", "Delta": "delta",
+                 "Frontier": "hk-plane/frontierairlines", "Frontier Airlines": "hk-plane/frontierairlines",
+                 "Alaskan Airlines": "hk-plane/alaskaairlines", "Alaska": "hk-plane/alaskaairlines",
+                 "Allegiant": "hk-plane/allegiantair", "Breeze": "hk-plane/breezeairways",
+                 "Hulu": "hk-tv/hulu", "Disney+": "hk-tv/disney", "Netflix": "netflix",
+                 "Mercedes": "hk-car/mercedesbenz", "Carvana": "hk-car/carvana", "Toyota": "toyota",
+                 "Kroger": "hk-cart/kroger", "Xbox": "hk-controller/xbox", "Elden Ring": "hk-sword/eldenring",
+                 "Minecraft": "hk-sword/minecraft", "Hilton": "hilton", "Hyatt": "hk-hotel/hyatt",
+                 "Chase": "chase", "Mint Mobile": "hk-phone/mintmobile", "Cricket": "hk-phone/cricketwireless",
+                 "GEICO": "hk-shield/geico", "Navy Federal": "hk-bank/navyfederalcreditunion",
+                 "Amtrak": "hk-train/amtrak", "my car": None, "car payment": "hk-car"}
         for name, slug in cases.items():
             self.assertEqual(brand_icons.suggest(name), slug, name)
 
     def test_new_icons_draw_solid(self):
-        for slug in ("hk-amazon", "hk-plane", "hk-car", "hk-card", "hk-tv", "hk-cart", "hk-hotel", "hk-sword"):
+        for slug in ("hk-amazon", "hk-plane", "hk-car", "hk-card", "hk-tv", "hk-cart", "hk-hotel", "hk-sword",
+                     "hk-train", "hk-shield", "hk-plane/frontierairlines", "hk-music/amazonmusic"):
             img = brand_icons.render(slug, 48)
             self.assertIsNotNone(img, slug)
             self.assertGreater(sum(img.getchannel("A").histogram()[129:]), 300, slug)
@@ -72,14 +79,16 @@ class BrandIconTests(unittest.TestCase):
     def test_restaurants(self):
         self.assertEqual(brand_icons.suggest("McDonalds"), "mcdonalds")
         self.assertEqual(brand_icons.suggest("Starbucks rewards"), "starbucks")
-        self.assertEqual(brand_icons.suggest("Dominos"), "hk-pizza")      # no shared logo: pizza icon
-        self.assertEqual(brand_icons.suggest("Chipotle"), "hk-food")
-        self.assertEqual(brand_icons.suggest("Wendys"), "hk-burger")
-        self.assertEqual(brand_icons.suggest("Dunkin"), "hk-coffee")
+        self.assertEqual(brand_icons.suggest("Dominos"), "hk-pizza/dominos")   # own entry, pizza icon
+        self.assertEqual(brand_icons.suggest("Chipotle"), "hk-food/chipotle")
+        self.assertEqual(brand_icons.suggest("Wendys"), "hk-burger/wendys")
+        self.assertEqual(brand_icons.suggest("Dunkin"), "hk-coffee/dunkin")
+        self.assertEqual(brand_icons.suggest("Olive Garden"), "hk-food/olivegarden")
+        self.assertEqual(brand_icons.suggest("pizza place"), "hk-pizza")
 
     def test_big_names_ranked_first(self):
         self.assertEqual([t for _, t in brand_icons.search("s", 3)], ["Snapchat", "Spotify", "Steam"])
-        self.assertEqual(brand_icons.search("xbox")[0][0], "hk-controller")
+        self.assertEqual(brand_icons.search("xbox")[0][0], "hk-controller/xbox")
 
     def test_suggest(self):
         self.assertEqual(brand_icons.suggest("Riot account 1"), "riotgames")

@@ -129,19 +129,65 @@ EVERYDAY += [
      "M11 1h2l1.2 2.2V14h-4.4V3.2ZM6 14.2h12v2.2H6ZM11 16.6h2v3.8h-2ZM10.4 22a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0-3.2 0Z",
      []],
 ]
+EVERYDAY += [
+    ["hk-train", "Train & bus", "8FD3FF",
+     "M6 2h12a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3l2 3h-2.5l-2-3h-7l-2 3H4l2-3a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3Z"
+     "M5.5 5v5h13V5ZM7 13a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3ZM17 13a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3Z",
+     ["train", "bus", "rail", "subway pass", "transit", "metro card", "commute"]],
+    ["hk-shield", "Insurance", "3DDC97",
+     "M12 2 3 5.5v6c0 5.3 3.8 9.4 9 10.5 5.2-1.1 9-5.2 9-10.5v-6Z"
+     "M10.6 15.6 7.2 12.2l1.4-1.4 2 2 4.8-4.8 1.4 1.4Z",
+     ["insurance", "health insurance", "car insurance", "home insurance", "life insurance", "doctor",
+      "health", "dental", "pharmacy", "medical"]],
+]
 _EVERYDAY_SLUGS = {e[0] for e in EVERYDAY}
 NONZERO = {"hk-amazon"}   # drawn as overlapping pieces, so no holes
 
 
-def _add_names():
-    """Brand names without a shared logo: typing one offers the closest everyday icon
-    (e.g. "Capital One" -> Bank, "Hulu" -> Streaming TV, "Elden Ring" -> Video game)."""
+_NAMED = {}   # a company drawn with an everyday icon (see brand_named.py) -> that icon's slug
+# words left out when matching a company by its short name ("Frontier Airlines" -> "frontier")
+_GENERIC_WORDS = {"airlines", "airline", "airways", "air", "aviation", "bank", "credit", "union", "federal",
+                  "fcu", "financial", "wireless", "mobile", "insurance", "restaurant", "pizza", "coffee",
+                  "burger", "grill", "cafe", "hotels", "lines", "line", "cruise", "market", "markets", "foods",
+                  "the", "of", "by", "and", "online", "app", "deli", "steakhouse", "rent", "a", "car", "rental"}
+
+
+def _named_entries(known_titles):
+    """Each company in brand_named.py as its own logo entry, plus the extra names in
+    brand_names.py for the everyday icons (e.g. "car payment" -> Car)."""
     from brand_names import MORE_NAMES
-    for e in EVERYDAY:
-        e[4] = list(dict.fromkeys(e[4] + MORE_NAMES.get(e[0], [])))
+    from brand_named import NAMED
+    by_base = {e[0]: e for e in EVERYDAY}
+    out, covered, slugs = [], set(), set()
+    _NAMED.clear()
+    for base, text in NAMED.items():
+        icon = by_base[base]
+        for line in text.strip().splitlines():
+            parts = [x.strip() for x in line.split("|")]
+            title = parts[0]
+            key = _norm(title)
+            if not key or key in known_titles or key.replace(" ", "") in known_titles:
+                continue   # already has a real logo
+            color = parts[1] if len(parts) > 1 and re.fullmatch(r"[0-9A-Fa-f]{6}", parts[1]) else icon[2]
+            aliases = [a.strip() for a in parts[2].split(";") if a.strip()] if len(parts) > 2 else []
+            short = " ".join(w for w in key.split() if w not in _GENERIC_WORDS)
+            if short and short != key and len(short) >= 3:
+                aliases.append(short)
+            slug = base + "/" + re.sub(r"[^a-z0-9]", "", key)
+            if slug in slugs:
+                continue
+            slugs.add(slug)
+            _NAMED[slug] = base
+            covered.update(_norm(a) for a in [title] + aliases)
+            out.append([slug, title, color, icon[3], aliases])
+    for e in EVERYDAY:   # a company with its own entry no longer points at the plain icon
+        names = list(dict.fromkeys(e[4] + MORE_NAMES.get(e[0], [])))
+        e[4] = [a for a in names if _norm(a) not in covered]
+    return out
 
 
-_add_names()
+def is_named(slug) -> bool:
+    return slug in _NAMED
 
 # The best-known apps, banks, streaming services, games, stores and
 # restaurants, most popular first. This is what the dropdown shows before you
@@ -180,7 +226,7 @@ CATEGORIES = [
                        "hdfcbank", "icicibank", "paypal", "venmo", "cashapp", "zelle", "applepay", "googlepay",
                        "samsungpay", "visa", "mastercard", "klarna", "afterpay", "wise", "stripe", "robinhood",
                        "coinbase", "binance", "mercadopago", "paytm", "phonepe"]),
-    ("Airlines & travel", ["hk-plane", "hk-hotel", "delta", "unitedairlines", "americanairlines",
+    ("Airlines & travel", ["hk-plane", "hk-hotel", "hk-train", "delta", "unitedairlines", "americanairlines",
                            "southwestairlines", "jetblue", "aircanada", "britishairways", "lufthansa", "airfrance",
                            "klm", "emirates", "qatarairways", "etihadairways", "turkishairlines",
                            "singaporeairlines", "qantas", "japanairlines", "ana", "ryanair", "easyjet", "wizzair",
@@ -205,6 +251,9 @@ CATEGORIES = [
                            "tidal", "deezer", "pandora", "soundcloud", "audible", "iheartradio", "shazam",
                            "bandcamp", "audiomack", "napster", "lastdotfm", "applepodcasts", "pocketcasts",
                            "jellyfin", "emby", "kodi"]),
+    ("Phone, internet & bills", ["hk-phone", "hk-home", "hk-shield", "verizon", "atandt", "vodafone",
+                                 "orange", "spectrum", "boost", "metro", "ring", "vivint", "arlo", "wyze",
+                                 "zillow", "starlink"]),
     ("Gaming services", ["hk-controller", "steam", "epicgames", "playstation", "battledotnet", "ea", "origin",
                          "ubisoft", "gogdotcom", "itchdotio", "humblebundle", "riotgames", "rockstargames",
                          "activision", "valve", "roblox", "discord", "nvidia", "amd", "razer", "curseforge",
@@ -244,7 +293,8 @@ def load():
                     # never crash the app over logos: everyday icons still work
                     import traceback
                     traceback.print_exc()
-            icons = [list(e) for e in EVERYDAY] + icons
+            known = {_norm(i[1]) for i in icons} | {i[0] for i in icons}
+            icons = [list(e) for e in EVERYDAY] + _named_entries(known) + icons
             _by_slug = {i[0]: i for i in icons}
             _icons = icons
     return _icons
@@ -259,7 +309,9 @@ def sections():
     seen = set(TOP_50[:50])
     out = [("Popular", pick(TOP_50[:50]))]
     for title, slugs in CATEGORIES:
-        mine = [s for s in slugs if s not in seen]
+        bases = {s for s in slugs if s in _EVERYDAY_SLUGS}
+        named = sorted((s for s, b in _NAMED.items() if b in bases), key=lambda s: _by_slug[s][1].lower())
+        mine = [s for s in list(dict.fromkeys(slugs + named)) if s not in seen]
         seen.update(mine)
         out.append((title, pick(mine)))
     rest = [s for s in TOP_50 if s not in seen] + [e[0] for e in EVERYDAY if e[0] not in seen]
@@ -339,6 +391,8 @@ def search(query: str, limit: int = 8):
             # big, well-known names first, then HushKey's everyday icons, then the rest
             if slug in _TOP_RANK:
                 best -= 0.75
+            elif slug in _NAMED:
+                best -= 0.3
             elif slug in _EVERYDAY_SLUGS:
                 best -= 0.25
             scored.append((best, _TOP_RANK.get(slug, 999), len(name), name.lower(), slug, name))
@@ -360,7 +414,7 @@ def suggest(client_name: str):
             squashed = _norm(name).replace(" ", "")
             if first in brand_words or squashed == first or (len(first) >= 6 and squashed.startswith(first)):
                 return slug
-            if slug in _EVERYDAY_SLUGS:   # "Dominos" -> Pizza, "Chipotle" -> Restaurant
+            if slug in _EVERYDAY_SLUGS or slug in _NAMED:   # "Dominos" -> Pizza, "Chipotle" -> Restaurant
                 said = " ".join(words)
                 for kw in _by_slug[slug][4]:
                     k = _norm(kw)
@@ -631,7 +685,9 @@ def render(slug: str, size: int = 64, light: bool = False):
         return None
     ss = 4  # draw 4x bigger, then shrink, for smooth edges
     big = size * ss
-    mask = _fill_nonzero(path_to_polygons(item[3]), big, big / 24.0, evenodd=slug in _EVERYDAY_SLUGS and slug not in NONZERO)
+    base = _NAMED.get(slug, slug)
+    mask = _fill_nonzero(path_to_polygons(item[3]), big, big / 24.0,
+                         evenodd=base in _EVERYDAY_SLUGS and base not in NONZERO)
     mask = mask.resize((size, size), Image.BOX)
     img = Image.new("RGBA", (size, size), _readable_color(item[2], light) + (0,))
     img.putalpha(mask)

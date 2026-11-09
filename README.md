@@ -85,10 +85,10 @@ HushKey is built with users first. Your privacy matters more than any feature.
 ### v2.0.18
 
 **New**
-- **Amazon logo:** pick it for your Amazon, Prime Video, Amazon Music or AWS logins (search "amazon").
-- **Logo categories:** the logo menu now has Popular plus Shopping, Banks & money, Airlines & travel, Food & delivery, Cars & dealerships, Streaming & music, Gaming services and Video games. Click a category to open it.
-- **New icons:** Airline, Hotel, Car, Credit card, Streaming TV, Groceries and Video game.
-- **Over 1,000 more names you can search**, including banks (Capital One, Citi, US Bank, Ally, SoFi, Navy Federal...), airlines (Alaska, Spirit, Frontier, WestJet, Cathay Pacific...), restaurants and grocery stores, car brands and dealerships (Mercedes, Lexus, Carvana, CarMax...), streaming (Hulu, Disney+, Peacock, ESPN+...), gaming services (Xbox, Nintendo, Game Pass...) and games (Minecraft, Call of Duty, Elden Ring, GTA...). Brands without their own logo get the matching icon.
+- **Amazon logo:** pick it for your Amazon or AWS logins (search "amazon").
+- **1,500+ more companies in the logo menu, each under its own name:** big and small airlines (Frontier, Alaska, Spirit, Allegiant, Sun Country, Breeze, Avelo, WestJet, Volaris...), banks and credit unions (Capital One, Citi, Navy Federal, Ally, Chime, SoFi, local credit unions...), fast food, restaurants and grocery stores (Wendy's, Chick-fil-A, Domino's, Kroger, Costco, H-E-B, Aldi...), car brands, dealerships, rentals and auto parts (Carvana, CarMax, Hertz, AutoZone...), streaming (Hulu, Disney+, Peacock, Sling...), budget phone carriers and internet (Mint Mobile, Cricket, Visible, Metro, Tello...), insurance (GEICO, Progressive, State Farm, Lemonade...), gaming services (Xbox, Nintendo, Game Pass...) and games (Minecraft, Call of Duty, Elden Ring, GTA...). Companies without a free logo are drawn with the matching icon, in their own color when known.
+- **Logo categories:** the logo menu now has Popular plus Shopping, Banks & money, Airlines & travel, Food & delivery, Cars & dealerships, Streaming & music, Phone, internet & bills, Gaming services and Video games. Click a category to open it. Big categories appear a few logos at a time, so the window never freezes.
+- **New icons:** Airline, Hotel, Train & bus, Car, Credit card, Streaming TV, Groceries, Insurance and Video game.
 
 **Fixed**
 - Searching for a logo after scrolling down the menu could show an empty list.

@@ -812,6 +812,18 @@ class LogoPicker(ctk.CTkFrame):
         except Exception:
             pass
 
+    SECTION_BATCH = 24
+
+    def _fill_section(self, body, items):
+        """Draw a category's logos a few at a time, so a big category (300 airlines and travel
+        companies) opens right away and the window never freezes while the rest appear."""
+        if not body.winfo_exists():
+            return
+        for slug, name in items[:self.SECTION_BATCH]:
+            self._option(slug, name, parent=body)
+        if len(items) > self.SECTION_BATCH:
+            self.after(15, lambda: self._fill_section(body, items[self.SECTION_BATCH:]))
+
     def _paint_section(self, title):
         sec = self._sections[title]
         sec["head"].configure(text=f"{'▾' if sec['open'] else '▸'}  {title.upper()}  ({len(sec['items'])})")
@@ -822,8 +834,7 @@ class LogoPicker(ctk.CTkFrame):
             return
         if sec["body"] is None:
             sec["body"] = ctk.CTkFrame(sec["box"], fg_color="transparent")
-            for slug, name in sec["items"]:
-                self._option(slug, name, parent=sec["body"])
+            self._fill_section(sec["body"], list(sec["items"]))
         sec["open"] = not sec["open"]
         if sec["open"]:
             sec["body"].pack(fill="x")
