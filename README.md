@@ -234,6 +234,10 @@ HushKey is built with users first. Your privacy matters more than any feature.
 - The logo picker showed an empty list. It now opens the top apps & games plus everyday icons, searches 3,400+ logos, and has "Use my own picture".
 - Updating didn't always replace the running app or refresh the desktop icon.
 
+## Website
+
+The HushKey website lives in the [`website`](website) folder (Next.js, exported as plain static files) and is published to GitHub Pages at https://erickb2021-lgtm.github.io/HushKey/ by the [Website workflow](.github/workflows/pages.yml) whenever that folder changes. See [website/README.md](website/README.md) to run or change it.
+
 ## For developers
 
 ```bash

@@ -1,0 +1,281 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   HushKey design tokens, matched to the Spline hero scene: near-black,
+   grainy off-white condensed capitals, small mono labels, ✦ sparkles,
+   and the glass cube's faint iridescent sheen. HushKey green stays for
+   the download buttons, so the brand still reads as HushKey.
+------------------------------------------------------------------- */
+@theme inline {
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-anton), Impact, "Arial Narrow", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@theme {
+  /* color */
+  --color-bg: #050506;
+  --color-surface: #0d0d10;
+  --color-raised: #141418;
+  --color-line: rgba(255, 255, 255, 0.1);
+  --color-line-strong: rgba(255, 255, 255, 0.2);
+  --color-fg: #eceae4;
+  --color-muted: #9a9a9f;
+  --color-accent: #3ddc97;
+  --color-accent-hover: #5be6aa;
+  --color-accent-ink: #08281a;
+  --color-key: #f2c14e;
+  --color-grad-1: #9ad7ff; /* the cube's sheen: ice blue, pale gold, rose */
+  --color-grad-2: #f3e3a4;
+  --color-grad-3: #ffb6d9;
+  --color-navy: #1e3a5f;
+  --color-danger: #f87171;
+
+  /* type scale (fluid) */
+  --text-hero: clamp(4.5rem, 26vw, 15rem);
+  --text-hero--line-height: 0.86;
+  --text-h2: clamp(2.75rem, 7vw, 6rem);
+  --text-h2--line-height: 0.92;
+  --text-h3: clamp(1.25rem, 2vw, 1.625rem);
+  --text-h3--line-height: 1.2;
+  --text-lead: clamp(1.0625rem, 1.4vw, 1.25rem);
+  --text-lead--line-height: 1.6;
+  --text-label: 0.75rem;
+  --text-label--line-height: 1.4;
+
+  /* radius: sharp, like the scene's cube */
+  --radius-control: 4px;
+  --radius-card: 6px;
+  --radius-panel: 8px;
+
+  /* shadow */
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 40px rgba(61, 220, 151, 0.22);
+
+  /* layout */
+  --container-page: 80rem;
+}
+
+/* `pinned:` = the same condition the "How it protects you" scroll chapter uses in Chapters.tsx:
+   a wide, tall-enough window and a visitor who hasn't asked for reduced motion. */
+@custom-variant pinned (@media (min-width: 1024px) and (min-height: 700px) and (prefers-reduced-motion: no-preference));
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  background: var(--color-bg);
+  /* no `scroll-behavior: smooth` here: Lenis does the smooth scrolling */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.6;
+  overflow-x: clip;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: rgba(236, 234, 228, 0.9);
+  color: #050506;
+}
+
+/* One focus style everywhere, always visible for keyboard users */
+:focus-visible {
+  outline: 2px solid var(--color-fg);
+  outline-offset: 3px;
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+
+h3 {
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* ---- shared pieces --------------------------------------------------- */
+
+@utility page {
+  width: 100%;
+  max-width: var(--container-page);
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+  @media (min-width: 48rem) {
+    padding-inline: 2.5rem;
+  }
+}
+
+@utility section-pad {
+  padding-block: 6rem;
+  @media (min-width: 64rem) {
+    padding-block: 9rem;
+  }
+}
+
+/* small mono label, like the scene's "2024 / 20XX" corner text */
+@utility label {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  line-height: var(--text-label--line-height);
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* a section's label with a ✦ in front */
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  &::before {
+    content: "✦";
+    margin-right: 0.75em;
+    color: var(--color-fg);
+  }
+}
+
+/* the cube's sheen, as text */
+@utility text-gradient {
+  background-image: linear-gradient(100deg, var(--color-grad-1), var(--color-grad-2) 50%, var(--color-grad-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* grainy off-white, like the scene's letters */
+@utility text-grain {
+  background-image:
+    linear-gradient(var(--color-fg), var(--color-fg)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.55 0 0 0 0 0.55 0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-blend-mode: multiply;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  min-height: 3rem; /* 48px touch target */
+  padding: 0.75rem 1.375rem;
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    transform 200ms ease,
+    box-shadow 200ms ease;
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+@utility btn-primary {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  box-shadow: var(--shadow-glow);
+  &:hover {
+    background: var(--color-accent-hover);
+  }
+}
+
+@utility btn-ghost {
+  background: transparent;
+  color: var(--color-fg);
+  border: 1px solid var(--color-line-strong);
+  &:hover {
+    border-color: var(--color-fg);
+    background: rgba(255, 255, 255, 0.04);
+  }
+}
+
+/* hairline-framed panel */
+@utility panel {
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+}
+
+/* The hero's still picture, used behind the HTML headline and when the 3D scene is off. */
+.hero-fallback {
+  background:
+    radial-gradient(55% 45% at 50% 48%, rgba(255, 255, 255, 0.05), transparent 70%),
+    linear-gradient(180deg, #08080a 0%, var(--color-bg) 100%);
+}
+
+/* The outline rows above and below the headline, like the scene's repeated "TICK TOCK" */
+.outline-text {
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(236, 234, 228, 0.16);
+}
+
+/* Film grain over the whole page: one fixed element, very faint */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: 0.055;
+  mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 240px 240px;
+}
+
+/* ✦ sparkle decorations */
+.spark {
+  position: absolute;
+  font-size: 0.875rem;
+  line-height: 1;
+  color: var(--color-fg);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* FAQ: the + turns into × when a question is open */
+details[open] .faq-mark {
+  transform: rotate(45deg);
+}
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
