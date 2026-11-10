@@ -9,14 +9,7 @@ import { SPLINE_SCENE } from "@/lib/site";
 const Spline = dynamic(() => import("@splinetool/react-spline"), { ssr: false });
 
 /** The scene is drawn at this fraction of the stage's size and scaled up (fewer pixels to shade). */
-const RENDER_SCALE = 0.5;
-
-/**
- * If a visitor's computer can't draw the scene at this many frames per second
- * (checked over the first few seconds), the scene is switched off and the HTML
- * headline takes its place. Better a still hero than a stuttering one.
- */
-const MIN_FPS = 30;
+const RENDER_SCALE = 0.6;
 
 /** Wide screen, a real mouse, and no request for reduced motion. */
 const CAN_ANIMATE = "(min-width: 768px) and (pointer: fine) and (prefers-reduced-motion: no-preference)";
@@ -62,7 +55,6 @@ function hasWebGL2() {
 export default function SplineHero({ onReady }: { onReady: (ready: boolean) => void }) {
   const [live, setLive] = useState(false);
   const [shown, setShown] = useState(false);
-  const [tooSlow, setTooSlow] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
   const app = useRef<Application | null>(null);
   const onScreen = useRef(true);
@@ -121,35 +113,7 @@ export default function SplineHero({ onReady }: { onReady: (ready: boolean) => v
     };
   }, [live]);
 
-  // watch the frame rate for a few seconds after the scene appears
-  useEffect(() => {
-    if (!shown || tooSlow) return;
-    let frames = 0;
-    let raf = 0;
-    const started = performance.now();
-    const tick = () => {
-      frames += 1;
-      const elapsed = performance.now() - started;
-      if (elapsed < 4000) {
-        raf = requestAnimationFrame(tick);
-        return;
-      }
-      if (onScreen.current && document.visibilityState === "visible" && frames / (elapsed / 1000) < MIN_FPS) {
-        app.current?.stop();
-        setTooSlow(true);
-        onReady(false);
-      }
-    };
-    const delay = window.setTimeout(() => {
-      raf = requestAnimationFrame(tick);
-    }, 1500); // skip the first moments, while the scene is still settling
-    return () => {
-      window.clearTimeout(delay);
-      cancelAnimationFrame(raf);
-    };
-  }, [shown, tooSlow, onReady]);
-
-  if (!live || tooSlow) return null;
+  if (!live) return null;
 
   return (
     <div
