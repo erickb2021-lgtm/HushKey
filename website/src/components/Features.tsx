@@ -76,6 +76,7 @@ export default function Features() {
                 intensity={0.1}
                 spotlightSize={260}
                 borderGlow={0.8}
+                proximity={0}
                 style={
                   {
                     "--spotlight-card-surface": "var(--color-bg)",

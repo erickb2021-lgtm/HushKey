@@ -32,7 +32,6 @@ export default function Pricing() {
               intensity={0.1}
               spotlightSize={380}
               borderGlow={0.9}
-              ambient
               style={
                 {
                   "--spotlight-card-surface": "var(--color-surface)",

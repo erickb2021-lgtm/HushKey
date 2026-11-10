@@ -49,19 +49,12 @@ export default function Gallery() {
   // ---- the WebGL carousel: desktop only, loaded when the section comes near ----
   useEffect(() => {
     if (!window.matchMedia(CAN_ANIMATE).matches || !root.current) return;
-    // Asking for a WebGL surface is slow, so it's only tested once the section is close.
-    const hasWebGL2 = () => {
-      try {
-        return !!document.createElement("canvas").getContext("webgl2");
-      } catch {
-        return false;
-      }
-    };
+    // No separate WebGL test here (creating a throwaway context causes a visible hitch):
+    // the carousel itself quietly shows nothing if the browser has no WebGL2.
     const observer = new IntersectionObserver(
       entries => {
         if (!entries.some(e => e.isIntersecting)) return;
         observer.disconnect();
-        if (!hasWebGL2()) return;
         const family = getComputedStyle(document.documentElement).getPropertyValue("--font-space-grotesk").trim();
         if (family) setLabelFont(`700 24px ${family}`);
         setCarousel(true);
@@ -191,6 +184,7 @@ export default function Gallery() {
             scrollEase={0.07}
             textColor="#eef1f6"
             font={labelFont}
+            dpr={1}
             aria-label="HushKey screenshots. Drag, or use the arrow keys, to turn the gallery."
           />
         )}

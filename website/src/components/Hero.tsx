@@ -49,8 +49,8 @@ export default function Hero() {
 
         {/* HTML version of the scene */}
         <div
-          className={`absolute inset-0 flex flex-col items-center justify-center overflow-hidden transition-opacity duration-700 ${
-            sceneReady ? "pointer-events-none opacity-0" : "opacity-100"
+          className={`absolute inset-0 flex flex-col items-center justify-center overflow-hidden transition-[opacity,visibility] duration-700 ${
+            sceneReady ? "pointer-events-none invisible opacity-0" : "visible opacity-100"
           }`}
           data-scene-fallback
         >

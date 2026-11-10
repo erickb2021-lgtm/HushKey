@@ -38,7 +38,7 @@ export default function Nav() {
   return (
     <header
       className={`fixed inset-x-0 top-0 z-50 transition-[background-color,border-color] duration-300 ${
-        scrolled || open ? "border-b border-line bg-bg/85 backdrop-blur-md" : "border-b border-transparent"
+        scrolled || open ? "border-b border-line bg-bg/95" : "border-b border-transparent"
       }`}
     >
       <nav className="page flex h-16 items-center justify-between" aria-label="Main">
