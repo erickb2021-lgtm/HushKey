@@ -120,9 +120,10 @@ const SpotlightCard = ({
     grain: clamp(grain, 0, 1)
   };
   const settingsRef = useRef(settings);
-  settingsRef.current = settings;
 
+  // the settings the draw loop reads are updated after each render, never during one
   useEffect(() => {
+    settingsRef.current = settings;
     wakeRef.current?.();
   });
 

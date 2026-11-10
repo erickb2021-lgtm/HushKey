@@ -10,13 +10,6 @@ export const ISSUES_URL = `${GITHUB_URL}/issues`;
 export const DOWNLOAD_WINDOWS = `${RELEASES_URL}/latest/download/HushKey-Windows.exe`;
 export const DOWNLOAD_MAC = `${RELEASES_URL}/latest/download/HushKey-Mac.zip`;
 
-/**
- * Your Spline 3D scene for the hero. Paste the link Spline gives you when you export the
- * scene for the web. It looks like "https://prod.spline.design/XXXXXXXX/scene.splinecode".
- * While this is empty, the hero shows the glowing liquid background instead.
- */
-export const SPLINE_SCENE: string = "https://prod.spline.design/igYCyLhAJtYZ9cdY/scene.splinecode";
-
 /** Path to a file in /public that also works when the site is hosted under a sub-path. */
 export const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 

@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------
-   HushKey design tokens, matched to the Spline hero scene: near-black,
-   grainy off-white condensed capitals, small mono labels, ✦ sparkles,
-   and the glass cube's faint iridescent sheen. HushKey green stays for
-   the download buttons, so the brand still reads as HushKey.
+   HushKey design tokens: black, white outline capitals (the "HUSHKEY"
+   rows), grainy off-white condensed headings, small mono labels and
+   ✦ sparkles. HushKey green stays for the download buttons, so the
+   brand still reads as HushKey.
 ------------------------------------------------------------------- */
 @theme inline {
   --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
@@ -25,7 +25,7 @@
   --color-accent-hover: #5be6aa;
   --color-accent-ink: #08281a;
   --color-key: #f2c14e;
-  --color-grad-1: #9ad7ff; /* the cube's sheen: ice blue, pale gold, rose */
+  --color-grad-1: #9ad7ff; /* a faint sheen for the encrypted text: ice blue, pale gold, rose */
   --color-grad-2: #f3e3a4;
   --color-grad-3: #ffb6d9;
   --color-navy: #1e3a5f;
@@ -34,6 +34,8 @@
   /* type scale (fluid) */
   --text-hero: clamp(4.5rem, 26vw, 15rem);
   --text-hero--line-height: 0.86;
+  --text-band: clamp(3rem, 7vw, 6.5rem); /* the outline bands between sections */
+  --text-band--line-height: 1;
   --text-h2: clamp(2.75rem, 7vw, 6rem);
   --text-h2--line-height: 0.92;
   --text-h3: clamp(1.25rem, 2vw, 1.625rem);
@@ -43,7 +45,7 @@
   --text-label: 0.75rem;
   --text-label--line-height: 1.4;
 
-  /* radius: sharp, like the scene's cube */
+  /* radius: sharp */
   --radius-control: 4px;
   --radius-card: 6px;
   --radius-panel: 8px;
@@ -133,7 +135,7 @@ p {
   }
 }
 
-/* small mono label, like the scene's "2024 / 20XX" corner text */
+/* small mono label, like the corner text of a poster */
 @utility label {
   font-family: var(--font-mono);
   font-size: var(--text-label);
@@ -158,7 +160,7 @@ p {
   }
 }
 
-/* the cube's sheen, as text */
+/* a faint sheen, as text */
 @utility text-gradient {
   background-image: linear-gradient(100deg, var(--color-grad-1), var(--color-grad-2) 50%, var(--color-grad-3));
   -webkit-background-clip: text;
@@ -166,7 +168,7 @@ p {
   color: transparent;
 }
 
-/* grainy off-white, like the scene's letters */
+/* grainy off-white headline letters */
 @utility text-grain {
   background-image:
     linear-gradient(var(--color-fg), var(--color-fg)),
@@ -229,18 +231,51 @@ p {
   border-radius: var(--radius-card);
 }
 
-/* The hero's still picture, used behind the HTML headline and when the 3D scene is off.
-   Pure black, like the scene's own backdrop plane, so the two never show a seam. */
-.hero-fallback {
+/* The hero's black stage, with the faintest glow behind the name */
+.hero-bg {
   background:
-    radial-gradient(55% 45% at 50% 48%, rgba(255, 255, 255, 0.05), transparent 70%),
+    radial-gradient(55% 45% at 50% 50%, rgba(255, 255, 255, 0.06), transparent 70%),
     #000;
 }
 
-/* The outline rows above and below the headline, like the scene's repeated "TICK TOCK" */
+/* The "HUSHKEY" rows: white outline letters, no fill. Drawn once by the browser;
+   nothing about them changes while the page scrolls. */
 .outline-text {
   color: transparent;
-  -webkit-text-stroke: 1px rgba(236, 234, 228, 0.16);
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.34);
+}
+.outline-text-dim {
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.16);
+}
+
+/* The one entrance on the page: the name rises in once when it loads (opacity and
+   transform only, so the browser composites it without re-laying anything out). */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.25em);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .rise {
+    animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  .fade-in {
+    animation: fade-in 0.25s ease-out both;
+  }
 }
 
 /* Film grain over the whole page: one fixed element, very faint. No blend mode on

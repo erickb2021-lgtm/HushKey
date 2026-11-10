@@ -1,4 +1,3 @@
-import TiltedCard from "@/components/reactbits/TiltedCard";
 import { Reveal, SectionHeading } from "@/components/Reveal";
 import { asset } from "@/lib/site";
 
@@ -40,26 +39,18 @@ export default function About() {
           </Reveal>
         </div>
 
-        {/* The real "Add a Login" window. It tilts toward the cursor (React Bits TiltedCard). */}
+        {/* The real "Add a Login" window, as a picture */}
         <Reveal className="mx-auto w-full max-w-[25rem]">
-          <div data-reveal className="aspect-[500/640] w-full">
-            <TiltedCard
-              imageSrc={asset("/shots/logos.webp")}
-              altText="Adding a login in HushKey and choosing its logo from the Airlines and travel category."
-              containerWidth="100%"
-              containerHeight="100%"
-              imageWidth="100%"
-              imageHeight="100%"
-              radius={6}
-              rotateAmplitude={9}
-              scaleOnHover={1.03}
-              glare={0.22}
-              glareColor="#ffffff"
-              shadow={0.6}
-              showTooltip={false}
-              flipOnClick={false}
-              gyroscope={false}
-              intro={false}
+          <div data-reveal className="overflow-hidden rounded-card border border-line-strong bg-surface shadow-card">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={asset("/shots/logos.webp")}
+              alt="Adding a login in HushKey and choosing its logo from the Airlines and travel category."
+              width={500}
+              height={640}
+              loading="lazy"
+              decoding="async"
+              className="block aspect-[500/640] w-full object-cover"
             />
           </div>
         </Reveal>

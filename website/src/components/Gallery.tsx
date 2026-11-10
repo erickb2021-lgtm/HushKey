@@ -1,22 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
-import gsap from "gsap";
-import type { Flip as FlipPlugin } from "gsap/Flip";
-import { useGSAP } from "@gsap/react";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-import TiltedCard from "@/components/reactbits/TiltedCard";
 import { CloseIcon } from "@/components/Icons";
-import { MOTION_OK, Reveal, SectionHeading } from "@/components/Reveal";
+import { Reveal, SectionHeading } from "@/components/Reveal";
 import { asset } from "@/lib/site";
-
-gsap.registerPlugin(ScrollTrigger, useGSAP);
-
-// WebGL carousel: its code is only fetched on desktops, when the section is near.
-const CircularGallery = dynamic(() => import("@/components/reactbits/CircularGallery"), { ssr: false });
-
-const CAN_ANIMATE = "(min-width: 1024px) and (pointer: fine) and (prefers-reduced-motion: no-preference)";
 
 /** Keeps the page from scrolling behind the dialog. Returns the function that lets it scroll again. */
 function lockPageScroll() {
@@ -38,128 +25,34 @@ const SHOTS = [
   { file: "appearance", title: "Appearance", text: "Theme, style, font, color and background, with a live preview.", alt: "The Appearance settings with a live preview of the vault." },
 ];
 
+/**
+ * The screenshots: a plain grid of pictures. Click one and it opens large in a
+ * simple lightbox. Nothing here runs while the page scrolls: the old 3D
+ * carousel redrew itself sixty times a second, which is what made this part
+ * of the page stutter.
+ */
 export default function Gallery() {
-  const root = useRef<HTMLElement>(null);
-  const detail = useRef<HTMLDivElement>(null);
-  const backdrop = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
-  const thumbs = useRef<(HTMLElement | null)[]>([]);
-  const flip = useRef<typeof FlipPlugin | null>(null); // GSAP Flip, fetched when the section comes near
-  const flipFrom = useRef<Flip.FlipState | null>(null);
+  const thumbs = useRef<(HTMLButtonElement | null)[]>([]);
   const lastOpened = useRef<number | null>(null);
-  const skewTo = useRef<((value: number) => void) | null>(null);
-
   const [active, setActive] = useState<number | null>(null);
-  const [carousel, setCarousel] = useState(false);
-  const [labelFont, setLabelFont] = useState("700 24px sans-serif");
 
-  const motionOK = () => window.matchMedia(MOTION_OK).matches;
-
-  // ---- the WebGL carousel: desktop only, loaded when the section comes near ----
-  useEffect(() => {
-    if (!window.matchMedia(CAN_ANIMATE).matches || !root.current) return;
-    // No separate WebGL test here (creating a throwaway context causes a visible hitch):
-    // the carousel itself quietly shows nothing if the browser has no WebGL2.
-    const observer = new IntersectionObserver(
-      entries => {
-        if (!entries.some(e => e.isIntersecting)) return;
-        observer.disconnect();
-        const family = getComputedStyle(document.documentElement).getPropertyValue("--font-space-grotesk").trim();
-        if (family) setLabelFont(`700 24px ${family}`);
-        setCarousel(true);
-      },
-      { rootMargin: "600px 0px" },
-    );
-    observer.observe(root.current);
-    return () => observer.disconnect();
-  }, []);
-
-  // ---- GSAP Flip is only needed here, so it's fetched when this section comes near ----
-  useEffect(() => {
-    if (!root.current) return;
-    const observer = new IntersectionObserver(
-      entries => {
-        if (!entries.some(e => e.isIntersecting)) return;
-        observer.disconnect();
-        import("gsap/Flip").then(plugin => {
-          gsap.registerPlugin(plugin.Flip);
-          flip.current = plugin.Flip;
-        });
-      },
-      { rootMargin: "100% 0px" },
-    );
-    observer.observe(root.current);
-    return () => observer.disconnect();
-  }, []);
-
-  // ---- cards lean with the scroll speed, and settle when you stop ----
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-      mm.add(`(min-width: 768px) and ${MOTION_OK}`, () => {
-        skewTo.current = gsap.quickTo("[data-skew]", "skewY", { duration: 0.5, ease: "power3.out" });
-        let settle = 0;
-        const trigger = ScrollTrigger.create({
-          trigger: root.current,
-          start: "top bottom",
-          end: "bottom top",
-          onUpdate: self => {
-            skewTo.current?.(gsap.utils.clamp(-4, 4, self.getVelocity() / 500));
-            window.clearTimeout(settle);
-            settle = window.setTimeout(() => skewTo.current?.(0), 120);
-          },
-        });
-        return () => {
-          window.clearTimeout(settle);
-          trigger.kill();
-          skewTo.current = null;
-        };
-      });
-    },
-    { scope: root },
-  );
-
-  // ---- grid <-> detail, morphed with GSAP Flip ----
   const open = (index: number) => {
-    const thumb = thumbs.current[index];
-    flipFrom.current = thumb && flip.current && motionOK() ? flip.current.getState(thumb) : null;
     lastOpened.current = index;
     setActive(index);
   };
+  const close = () => setActive(null);
 
-  const close = () => {
-    flipFrom.current = detail.current && flip.current && motionOK() ? flip.current.getState(detail.current) : null;
-    setActive(null);
-  };
-
-  useGSAP(
-    () => {
-      const state = flipFrom.current;
-      flipFrom.current = null;
-      if (active !== null) {
-        closeButton.current?.focus({ preventScroll: true });
-        if (state && detail.current && flip.current) {
-          flip.current.from(state, { targets: detail.current, duration: 0.65, ease: "power2.inOut", scale: true });
-          gsap.from(backdrop.current, { autoAlpha: 0, duration: 0.4, ease: "power1.out" });
-          gsap.from("[data-detail-text]", { autoAlpha: 0, y: 16, duration: 0.4, delay: 0.35, ease: "power2.out" });
-        }
-      } else if (lastOpened.current !== null) {
-        const thumb = thumbs.current[lastOpened.current];
-        thumb?.closest("button")?.focus({ preventScroll: true });
-        if (state && thumb && flip.current) {
-          flip.current.from(state, { targets: thumb, duration: 0.55, ease: "power2.inOut", scale: true, zIndex: 60 });
-        }
-      }
-    },
-    { dependencies: [active], scope: root },
-  );
-
-  // while the detail is open: stop the page scrolling behind it, and let Escape close it
+  // while the lightbox is open: stop the page scrolling behind it, keep focus inside it, let Escape close it
   useEffect(() => {
-    if (active === null) return;
+    if (active === null) {
+      if (lastOpened.current !== null) thumbs.current[lastOpened.current]?.focus({ preventScroll: true });
+      return;
+    }
+    closeButton.current?.focus({ preventScroll: true });
     const unlock = lockPageScroll();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") setActive(null);
       if (event.key === "Tab") {
         event.preventDefault(); // the close button is the only control in the dialog
         closeButton.current?.focus();
@@ -170,13 +63,12 @@ export default function Gallery() {
       unlock();
       window.removeEventListener("keydown", onKey);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
   const shot = active !== null ? SHOTS[active] : null;
 
   return (
-    <section ref={root} id="screens" className="section-pad relative overflow-x-clip" aria-labelledby="screens-title">
+    <section id="screens" className="section-pad relative" aria-labelledby="screens-title">
       <div className="page relative">
         <SectionHeading
           id="screens-title"
@@ -185,81 +77,48 @@ export default function Gallery() {
           intro="These are real screenshots of HushKey, taken with a made-up demo vault."
           align="center"
         />
-      </div>
 
-      {/* The carousel's space is always reserved on wide screens, so nothing below it moves when it loads. */}
-      <div className="relative mt-8 hidden h-[36rem] lg:block">
-        {carousel && (
-          /* React Bits CircularGallery, showing the app's own screens. Drag it, or use the arrow keys. */
-          <CircularGallery
-            items={SHOTS.map(s => ({ image: asset(`/shots/${s.file}.webp`), text: s.title, description: s.text, alt: s.alt }))}
-            bend={1.6}
-            itemAspect={1.6}
-            itemSize={1.25}
-            gap={0.2}
-            wave={0.6}
-            borderRadius={0.012}
-            fadeEdges={0.16}
-            shadow={0.4}
-            scrollSpeed={1.6}
-            scrollEase={0.07}
-            textColor="#eef1f6"
-            font={labelFont}
-            dpr={1}
-            aria-label="HushKey screenshots. Drag, or use the arrow keys, to turn the gallery."
-          />
-        )}
-      </div>
-
-      <div className="page relative">
-        <Reveal as="ul" className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" stagger={0.06}>
+        <Reveal as="ul" className="mt-14 grid gap-5 sm:grid-cols-2 lg:mt-16 lg:grid-cols-3" stagger={0.06}>
           {SHOTS.map((s, i) => (
             <li key={s.file} data-reveal>
-              <div data-skew className="will-change-transform">
-                <button
-                  type="button"
-                  onClick={() => open(i)}
-                  className="group block w-full cursor-pointer rounded-card text-left"
-                  aria-haspopup="dialog"
-                  aria-label={`${s.title}: view larger`}
-                >
-                  <span
-                    ref={node => {
-                      thumbs.current[i] = node;
-                    }}
-                    data-flip-id={active === i ? undefined : `shot-${i}`}
-                    className={`block aspect-[16/10] overflow-hidden rounded-card border border-line bg-surface transition-[border-color] duration-200 group-hover:border-fg/60 ${
-                      active === i ? "invisible" : ""
-                    }`}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={asset(`/shots/${s.file}-sm.webp`)}
-                      width={800}
-                      height={500}
-                      loading="lazy"
-                      decoding="async"
-                      alt={s.alt}
-                      className="block size-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
-                    />
-                  </span>
-                  <span className="label mt-4 block text-fg">{s.title}</span>
-                  <span className="mt-1.5 block text-sm text-muted">{s.text}</span>
-                </button>
-              </div>
+              <button
+                ref={node => {
+                  thumbs.current[i] = node;
+                }}
+                type="button"
+                onClick={() => open(i)}
+                className="group block w-full cursor-pointer rounded-card text-left"
+                aria-haspopup="dialog"
+                aria-label={`${s.title}: view larger`}
+              >
+                <span className="block aspect-[16/10] overflow-hidden rounded-card border border-line bg-surface transition-[border-color] duration-200 group-hover:border-fg/60">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={asset(`/shots/${s.file}-sm.webp`)}
+                    width={800}
+                    height={500}
+                    loading="lazy"
+                    decoding="async"
+                    alt={s.alt}
+                    className="block size-full object-cover"
+                  />
+                </span>
+                <span className="label mt-4 block text-fg">{s.title}</span>
+                <span className="mt-1.5 block text-sm text-muted">{s.text}</span>
+              </button>
             </li>
           ))}
         </Reveal>
       </div>
 
-      {shot && active !== null && (
+      {shot && (
         <div
-          className="fixed inset-0 z-[70] flex flex-col items-center justify-center p-4 sm:p-8"
+          className="fade-in fixed inset-0 z-[70] flex flex-col items-center justify-center p-4 sm:p-8"
           role="dialog"
           aria-modal="true"
           aria-label={shot.title}
         >
-          <div ref={backdrop} className="absolute inset-0 bg-bg/85 backdrop-blur-md" onClick={close} aria-hidden="true" />
+          <div className="absolute inset-0 bg-black/90" onClick={close} aria-hidden="true" />
           <button
             ref={closeButton}
             type="button"
@@ -269,32 +128,16 @@ export default function Gallery() {
           >
             <CloseIcon />
           </button>
-          <div
-            ref={detail}
-            data-flip-id={`shot-${active}`}
-            className="relative aspect-[16/10] w-full max-w-[min(72rem,calc((100svh-12rem)*1.6))]"
-          >
-            {/* React Bits TiltedCard: the big screenshot leans toward the cursor */}
-            <TiltedCard
-              imageSrc={asset(`/shots/${shot.file}.webp`)}
-              altText={shot.alt}
-              containerWidth="100%"
-              containerHeight="100%"
-              imageWidth="100%"
-              imageHeight="100%"
-              radius={6}
-              rotateAmplitude={5}
-              scaleOnHover={1.01}
-              glare={0.18}
-              glareColor="#ffffff"
-              shadow={0.7}
-              showTooltip={false}
-              flipOnClick={false}
-              gyroscope={false}
-              intro={false}
-            />
-          </div>
-          <p data-detail-text className="relative mt-5 max-w-2xl text-center text-fg">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={asset(`/shots/${shot.file}.webp`)}
+            alt={shot.alt}
+            width={1600}
+            height={1000}
+            decoding="async"
+            className="relative aspect-[16/10] w-full max-w-[min(72rem,calc((100svh-12rem)*1.6))] rounded-card border border-line-strong object-cover shadow-card"
+          />
+          <p className="relative mt-5 max-w-2xl text-center text-fg">
             <span className="font-bold">{shot.title}.</span> <span className="text-muted">{shot.text}</span>
           </p>
         </div>
