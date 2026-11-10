@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Application } from "@splinetool/runtime";
 import { SPLINE_SCENE } from "@/lib/site";
@@ -44,10 +44,17 @@ function hasWebGL2() {
  * once the page is idle and the scene has loaded; `onReady` tells the hero to
  * fade that headline out. Phones, reduced-motion and browsers without WebGL2
  * never load it and keep the HTML headline.
+ *
+ * The scene only renders while it's on screen: as soon as the visitor scrolls
+ * past the hero, or switches tabs, it pauses, so the rest of the page scrolls
+ * without the 3D work running in the background.
  */
 export default function SplineHero({ onReady }: { onReady: (ready: boolean) => void }) {
   const [live, setLive] = useState(false);
   const [shown, setShown] = useState(false);
+  const stage = useRef<HTMLDivElement>(null);
+  const app = useRef<Application | null>(null);
+  const onScreen = useRef(true);
 
   useEffect(() => {
     if (!SPLINE_SCENE) return;
@@ -79,17 +86,44 @@ export default function SplineHero({ onReady }: { onReady: (ready: boolean) => v
     };
   }, [onReady]);
 
+  // pause the scene while it can't be seen
+  useEffect(() => {
+    if (!live || !stage.current) return;
+    const sync = () => {
+      const a = app.current;
+      if (!a) return;
+      if (onScreen.current && document.visibilityState === "visible") a.play();
+      else a.stop();
+    };
+    const observer = new IntersectionObserver(
+      entries => {
+        onScreen.current = entries.some(e => e.isIntersecting);
+        sync();
+      },
+      { threshold: 0.05 },
+    );
+    observer.observe(stage.current);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [live]);
+
   if (!live) return null;
 
   return (
     <div
+      ref={stage}
       className={`absolute inset-0 transition-opacity duration-[1200ms] ease-out ${shown ? "opacity-100" : "opacity-0"}`}
       aria-hidden="true"
     >
       <Spline
         scene={SPLINE_SCENE}
-        onLoad={app => {
-          hideTemplateParts(app);
+        onLoad={loaded => {
+          app.current = loaded;
+          hideTemplateParts(loaded);
+          if (!onScreen.current) loaded.stop();
           setShown(true);
           onReady(true);
         }}

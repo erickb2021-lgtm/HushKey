@@ -224,11 +224,12 @@ p {
   border-radius: var(--radius-card);
 }
 
-/* The hero's still picture, used behind the HTML headline and when the 3D scene is off. */
+/* The hero's still picture, used behind the HTML headline and when the 3D scene is off.
+   Pure black, like the scene's own backdrop plane, so the two never show a seam. */
 .hero-fallback {
   background:
     radial-gradient(55% 45% at 50% 48%, rgba(255, 255, 255, 0.05), transparent 70%),
-    linear-gradient(180deg, #08080a 0%, var(--color-bg) 100%);
+    #000;
 }
 
 /* The outline rows above and below the headline, like the scene's repeated "TICK TOCK" */
