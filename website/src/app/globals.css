@@ -66,8 +66,13 @@
 
 html {
   background: var(--color-bg);
-  /* no `scroll-behavior: smooth` here: Lenis does the smooth scrolling */
   -webkit-text-size-adjust: 100%;
+  /* the browser's own scrolling (no smoothing library, so there's no lag behind the wheel);
+     clicking a menu link glides to its section and stops just under the fixed header */
+  scroll-padding-top: 4.5rem;
+  @media (prefers-reduced-motion: no-preference) {
+    scroll-behavior: smooth;
+  }
 }
 
 body {

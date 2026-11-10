@@ -9,14 +9,14 @@ import { SPLINE_SCENE } from "@/lib/site";
 const Spline = dynamic(() => import("@splinetool/react-spline"), { ssr: false });
 
 /** The scene is drawn at this fraction of the stage's size and scaled up (fewer pixels to shade). */
-const RENDER_SCALE = 0.7;
+const RENDER_SCALE = 0.5;
 
 /**
  * If a visitor's computer can't draw the scene at this many frames per second
  * (checked over the first few seconds), the scene is switched off and the HTML
  * headline takes its place. Better a still hero than a stuttering one.
  */
-const MIN_FPS = 24;
+const MIN_FPS = 30;
 
 /** Wide screen, a real mouse, and no request for reduced motion. */
 const CAN_ANIMATE = "(min-width: 768px) and (pointer: fine) and (prefers-reduced-motion: no-preference)";

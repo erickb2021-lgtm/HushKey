@@ -5,18 +5,28 @@ import dynamic from "next/dynamic";
 import gsap from "gsap";
 import type { Flip as FlipPlugin } from "gsap/Flip";
 import { useGSAP } from "@gsap/react";
-import { useLenis } from "lenis/react";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import TiltedCard from "@/components/reactbits/TiltedCard";
 import { CloseIcon } from "@/components/Icons";
 import { MOTION_OK, Reveal, SectionHeading } from "@/components/Reveal";
 import { asset } from "@/lib/site";
 
-gsap.registerPlugin(useGSAP);
+gsap.registerPlugin(ScrollTrigger, useGSAP);
 
 // WebGL carousel: its code is only fetched on desktops, when the section is near.
 const CircularGallery = dynamic(() => import("@/components/reactbits/CircularGallery"), { ssr: false });
 
 const CAN_ANIMATE = "(min-width: 1024px) and (pointer: fine) and (prefers-reduced-motion: no-preference)";
+
+/** Keeps the page from scrolling behind the dialog. Returns the function that lets it scroll again. */
+function lockPageScroll() {
+  const style = document.documentElement.style;
+  const previous = style.overflow;
+  style.overflow = "hidden";
+  return () => {
+    style.overflow = previous;
+  };
+}
 
 // Real screenshots of the app, taken with a made-up demo vault.
 const SHOTS = [
@@ -42,7 +52,6 @@ export default function Gallery() {
   const [active, setActive] = useState<number | null>(null);
   const [carousel, setCarousel] = useState(false);
   const [labelFont, setLabelFont] = useState("700 24px sans-serif");
-  const lenis = useLenis();
 
   const motionOK = () => window.matchMedia(MOTION_OK).matches;
 
@@ -83,20 +92,32 @@ export default function Gallery() {
     return () => observer.disconnect();
   }, []);
 
-  // ---- cards lean with the scroll speed (Lenis velocity), and settle when you stop ----
+  // ---- cards lean with the scroll speed, and settle when you stop ----
   useGSAP(
     () => {
       const mm = gsap.matchMedia();
       mm.add(`(min-width: 768px) and ${MOTION_OK}`, () => {
         skewTo.current = gsap.quickTo("[data-skew]", "skewY", { duration: 0.5, ease: "power3.out" });
+        let settle = 0;
+        const trigger = ScrollTrigger.create({
+          trigger: root.current,
+          start: "top bottom",
+          end: "bottom top",
+          onUpdate: self => {
+            skewTo.current?.(gsap.utils.clamp(-4, 4, self.getVelocity() / 500));
+            window.clearTimeout(settle);
+            settle = window.setTimeout(() => skewTo.current?.(0), 120);
+          },
+        });
         return () => {
+          window.clearTimeout(settle);
+          trigger.kill();
           skewTo.current = null;
         };
       });
     },
     { scope: root },
   );
-  useLenis(({ velocity }) => skewTo.current?.(gsap.utils.clamp(-4, 4, velocity * 0.1)));
 
   // ---- grid <-> detail, morphed with GSAP Flip ----
   const open = (index: number) => {
@@ -136,7 +157,7 @@ export default function Gallery() {
   // while the detail is open: stop the page scrolling behind it, and let Escape close it
   useEffect(() => {
     if (active === null) return;
-    lenis?.stop();
+    const unlock = lockPageScroll();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
       if (event.key === "Tab") {
@@ -146,11 +167,11 @@ export default function Gallery() {
     };
     window.addEventListener("keydown", onKey);
     return () => {
-      lenis?.start();
+      unlock();
       window.removeEventListener("keydown", onKey);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, lenis]);
+  }, [active]);
 
   const shot = active !== null ? SHOTS[active] : null;
 
@@ -237,7 +258,6 @@ export default function Gallery() {
           role="dialog"
           aria-modal="true"
           aria-label={shot.title}
-          data-lenis-prevent
         >
           <div ref={backdrop} className="absolute inset-0 bg-bg/85 backdrop-blur-md" onClick={close} aria-hidden="true" />
           <button

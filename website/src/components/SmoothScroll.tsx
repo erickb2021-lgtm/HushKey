@@ -1,39 +1,25 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
-import { ReactLenis, useLenis, type LenisRef } from "lenis/react";
-import "lenis/dist/lenis.css";
+import { useEffect, type ReactNode } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 gsap.registerPlugin(ScrollTrigger);
 
-/** Tells ScrollTrigger about every Lenis scroll, so scroll animations stay in step. */
-function ScrollTriggerSync() {
-  useLenis(() => ScrollTrigger.update());
-  return null;
-}
-
 /**
- * Smooth scrolling for the whole site. Lenis is driven from GSAP's ticker
- * (one animation loop for both), and #anchor links scroll smoothly, stopping
- * just below the fixed header. Lenis switches itself off for people who ask
- * their system for reduced motion.
+ * Scrolling is the browser's own: no smoothing library, so the page moves the
+ * instant the wheel does. Anchor links (#features and so on) still glide, via
+ * CSS `scroll-behavior: smooth` in globals.css. This component only makes sure
+ * GSAP's ScrollTrigger re-measures the page once fonts and images have settled.
  */
 export default function SmoothScroll({ children }: { children: ReactNode }) {
-  const lenisRef = useRef<LenisRef>(null);
-
   useEffect(() => {
-    const update = (time: number) => lenisRef.current?.lenis?.raf(time * 1000);
-    gsap.ticker.add(update);
-    gsap.ticker.lagSmoothing(0);
-    return () => gsap.ticker.remove(update);
+    ScrollTrigger.config({ ignoreMobileResize: true });
+    const refresh = () => ScrollTrigger.refresh();
+    document.fonts?.ready.then(refresh);
+    window.addEventListener("load", refresh, { once: true });
+    return () => window.removeEventListener("load", refresh);
   }, []);
 
-  return (
-    <ReactLenis root ref={lenisRef} options={{ autoRaf: false, lerp: 0.14, anchors: { offset: -72 } }}>
-      <ScrollTriggerSync />
-      {children}
-    </ReactLenis>
-  );
+  return <>{children}</>;
 }
