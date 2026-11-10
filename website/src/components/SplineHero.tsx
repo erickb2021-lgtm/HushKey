@@ -16,15 +16,18 @@ const CAN_ANIMATE = "(min-width: 768px) and (pointer: fine) and (prefers-reduced
  * menu (HOME / ABOUT / PRODUCT), the "2024 / 20XX" dates, the "FROM EARTH / TARGET
  * MARS" labels and the "Scroll Down" globe (Group 100 and 88). They're switched off when the scene
  * loads. Everything else (the letters, the glass cube, the outline rows, the ✦
- * sparkles) stays. If you delete these in Spline instead, this list does nothing.
+ * sparkles, and the HUSH KEY text) stays. If you delete these in Spline instead, this list does nothing.
  */
-const TEMPLATE_PARTS = ["Group 98.png", "Group 99.png", "Group 100.png", "Group 88.png", "Group 3", "Group 4", "Text"];
+const TEMPLATE_PARTS = [
+  "Group 98.png", "Group 98.png 2", "Group 98.png 3", "Group 98.png 4", "Group 98.png 5",
+  "Group 99.png", "Group 100.png", "Group 88.png", "Group 3", "Group 4",
+  "Text", "Text 2", "Text 3", "Text 4", "Text 5", "Text 7", "Text 8",
+];
+// "Text 6" is the HUSH KEY headline itself, so it is deliberately not in the list above.
 
 function hideTemplateParts(app: Application) {
   for (const object of app.getAllObjects()) {
-    if (TEMPLATE_PARTS.some(name => object.name === name || object.name.startsWith(name + " "))) {
-      object.visible = false;
-    }
+    if (TEMPLATE_PARTS.includes(object.name)) object.visible = false;
   }
 }
 
