@@ -14,6 +14,9 @@ on:
     types: [published]
   push:
     branches: [main]
+    paths-ignore:          # changes to the website alone don't need the apps rebuilt
+      - "website/**"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
