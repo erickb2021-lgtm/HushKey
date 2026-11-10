@@ -1,5 +1,6 @@
 # Publishes the website (the `website` folder) to GitHub Pages whenever it changes.
-# One-time setup on GitHub: Settings → Pages → Source: "GitHub Actions".
+# The first run switches Pages on by itself. If that step fails, do it once by hand:
+# Settings → Pages → Source: "GitHub Actions".
 # The site then lives at https://erickb2021-lgtm.github.io/HushKey/
 name: Website
 
@@ -28,6 +29,10 @@ jobs:
         working-directory: website
     steps:
       - uses: actions/checkout@v4
+      # switches Pages on for the repo the first time, so there's nothing to click in Settings
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22
