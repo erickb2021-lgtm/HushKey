@@ -58,7 +58,7 @@ export default function Hero() {
             {ROW}
           </p>
           <h1 data-hero-title className="text-grain relative -my-[0.12em] px-4 text-center text-hero">
-            Hush<wbr />Key
+            Hush Key
           </h1>
           <p data-hero-row className="outline-text font-display text-hero uppercase whitespace-nowrap select-none" aria-hidden="true">
             {ROW}
