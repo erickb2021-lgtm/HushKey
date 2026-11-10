@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Application } from "@splinetool/runtime";
 import { SPLINE_SCENE } from "@/lib/site";
@@ -10,6 +10,12 @@ const Spline = dynamic(() => import("@splinetool/react-spline"), { ssr: false })
 
 /** The scene is drawn at this fraction of the stage's size and scaled up (fewer pixels to shade). */
 const RENDER_SCALE = 0.6;
+
+/** How long the scene keeps running after the mouse last moved over it (ms). */
+const IDLE_AFTER_MS = 1200;
+
+/** How long the scene runs after loading, so its entrance plays out (ms). */
+const INTRO_MS = 3500;
 
 /** Wide screen, a real mouse, and no request for reduced motion. */
 const CAN_ANIMATE = "(min-width: 768px) and (pointer: fine) and (prefers-reduced-motion: no-preference)";
@@ -48,9 +54,11 @@ function hasWebGL2() {
  * fade that headline out. Phones, reduced-motion and browsers without WebGL2
  * never load it and keep the HTML headline.
  *
- * The scene only renders while it's on screen: as soon as the visitor scrolls
- * past the hero, or switches tabs, it pauses, so the rest of the page scrolls
- * without the 3D work running in the background.
+ * The scene is expensive to draw (a glass cube with refraction), so it only
+ * runs while something can change: during its entrance, and while the mouse is
+ * moving over it (the cube follows the pointer). The rest of the time it's
+ * paused on its last frame, and it's always paused while scrolled out of view
+ * or in a background tab. Pausing costs nothing visible: the picture stays.
  */
 export default function SplineHero({ onReady }: { onReady: (ready: boolean) => void }) {
   const [live, setLive] = useState(false);
@@ -58,6 +66,30 @@ export default function SplineHero({ onReady }: { onReady: (ready: boolean) => v
   const stage = useRef<HTMLDivElement>(null);
   const app = useRef<Application | null>(null);
   const onScreen = useRef(true);
+  const wantRunning = useRef(false);
+  const idleTimer = useRef(0);
+
+  /** Starts or stops the runtime to match where the visitor is and what they're doing. */
+  const sync = useCallback(() => {
+    const a = app.current;
+    if (!a) return;
+    if (wantRunning.current && onScreen.current && document.visibilityState === "visible") a.play();
+    else a.stop();
+  }, []);
+
+  /** Run the scene now, and pause it `forMs` after the last call. */
+  const runFor = useCallback(
+    (forMs: number) => {
+      wantRunning.current = true;
+      sync();
+      window.clearTimeout(idleTimer.current);
+      idleTimer.current = window.setTimeout(() => {
+        wantRunning.current = false;
+        sync();
+      }, forMs);
+    },
+    [sync],
+  );
 
   useEffect(() => {
     if (!SPLINE_SCENE) return;
@@ -89,15 +121,9 @@ export default function SplineHero({ onReady }: { onReady: (ready: boolean) => v
     };
   }, [onReady]);
 
-  // pause the scene while it can't be seen
+  // pause while it can't be seen
   useEffect(() => {
     if (!live || !stage.current) return;
-    const sync = () => {
-      const a = app.current;
-      if (!a) return;
-      if (onScreen.current && document.visibilityState === "visible") a.play();
-      else a.stop();
-    };
     const observer = new IntersectionObserver(
       entries => {
         onScreen.current = entries.some(e => e.isIntersecting);
@@ -110,8 +136,9 @@ export default function SplineHero({ onReady }: { onReady: (ready: boolean) => v
     return () => {
       observer.disconnect();
       document.removeEventListener("visibilitychange", sync);
+      window.clearTimeout(idleTimer.current);
     };
-  }, [live]);
+  }, [live, sync]);
 
   if (!live) return null;
 
@@ -120,6 +147,8 @@ export default function SplineHero({ onReady }: { onReady: (ready: boolean) => v
       ref={stage}
       className={`absolute inset-0 transition-opacity duration-[1200ms] ease-out ${shown ? "opacity-100" : "opacity-0"}`}
       aria-hidden="true"
+      onPointerMove={() => runFor(IDLE_AFTER_MS)}
+      onPointerDown={() => runFor(IDLE_AFTER_MS)}
     >
       <div
         className="absolute left-0 top-0 origin-top-left"
@@ -134,7 +163,7 @@ export default function SplineHero({ onReady }: { onReady: (ready: boolean) => v
           onLoad={loaded => {
             app.current = loaded;
             hideTemplateParts(loaded);
-            if (!onScreen.current) loaded.stop();
+            runFor(INTRO_MS); // let the entrance play, then rest until the mouse moves
             setShown(true);
             onReady(true);
           }}
